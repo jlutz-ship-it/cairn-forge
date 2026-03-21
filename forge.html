@@ -727,12 +727,12 @@
 
   /* ===== LIVE FORGE CONNECTION ===== */
   const FORGE_API = window.location.hostname === 'localhost' || window.location.hostname === '192.168.0.27'
-    ? 'https://debut-del-adapted-printing.trycloudflare.com'
+    ? 'window.location.origin'
     : 'https://' + window.location.hostname.replace(':9000','') + ':8878';
 
   async function fetchForgeState() {
     try {
-      const resp = await fetch('https://debut-del-adapted-printing.trycloudflare.com/state');
+      const resp = await fetch('/state');
       const data = await resp.json();
 
       // Update builder count
