@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FORGE ARCADE — Cain's Game Lab</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e0e0e8;font-family:'Segoe UI',sans-serif;min-height:100vh}
+#menu{padding:20px;max-width:1200px;margin:0 auto}
+h1{text-align:center;font-size:28px;color:#ff8844;letter-spacing:4px;margin:20px 0 8px;text-transform:uppercase}
+.sub{text-align:center;color:#888;font-size:13px;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.card{background:#1a1a25;border:2px solid #2a2a3a;border-radius:12px;padding:16px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.card:hover{border-color:#ff8844;transform:translateY(-3px);box-shadow:0 6px 20px rgba(255,136,68,.2)}
+.card:active{transform:translateY(0)}
+.card-title{font-size:16px;font-weight:bold;color:#fff;margin-bottom:6px}
+.card-desc{font-size:12px;color:#999;line-height:1.4;margin-bottom:10px}
+.tags{display:flex;gap:4px;flex-wrap:wrap}
+.tag{font-size:10px;padding:3px 8px;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.tag-3d{background:rgba(170,68,255,.15);color:#bb77ff}
+.tag-2d{background:rgba(68,136,255,.15);color:#6699ff}
+.tag-sim{background:rgba(255,136,68,.15);color:#ff8844}
+.tag-game{background:rgba(0,255,136,.15);color:#00ff88}
+.tag-tool{background:rgba(255,215,0,.15);color:#ffd700}
+.section-title{font-size:14px;color:#00ddff;text-transform:uppercase;letter-spacing:3px;margin:24px 0 12px;padding-bottom:6px;border-bottom:1px solid #2a2a3a}
+#gameframe{position:fixed;top:0;left:0;width:100vw;height:100vh;border:none;z-index:1000;background:#000;display:none}
+#backbtn{position:fixed;top:12px;left:12px;z-index:1001;background:#ff8844;color:#000;border:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;display:none;letter-spacing:1px;box-shadow:0 2px 10px rgba(255,136,68,.4)}
+#backbtn:hover{background:#ffaa66;transform:scale(1.05)}
+.footer{text-align:center;color:#555;font-size:11px;margin-top:30px;padding:16px;border-top:1px solid #1a1a25}
+.footer .sig{color:#ff8844;font-style:italic}
+</style>
+</head>
+<body>
+
+<div id="menu">
+<h1>FORGE ARCADE</h1>
+<div class="sub">24 Games — Zero Dependencies — Built by Glitch — For Cain</div>
+
+<div class="section-title">3D Games</div>
+<div class="grid">
+<div class="card" onclick="play('forge-arcade-v3.html')">
+<div class="card-title">Forge Arcade v3</div>
+<div class="card-desc">16-cabinet metaverse arcade. Walk around, play games, earn $FORGE tokens.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">16 Games</span></div>
+</div>
+<div class="card" onclick="play('forge-casino.html')">
+<div class="card-title">Forge Casino</div>
+<div class="card-desc">12 casino games. Blackjack, Roulette, Crash, Poker, Mines, Keno.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">12 Games</span></div>
+</div>
+<div class="card" onclick="play('forge-arena-3d.html')">
+<div class="card-title">Forge Arena 3D</div>
+<div class="card-desc">First-person FPS. 4 weapons, 3 enemy types, waves, kill streaks.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">FPS</span></div>
+</div>
+<div class="card" onclick="play('hunt-master-3d.html')">
+<div class="card-title">Hunt Master 3D</div>
+<div class="card-desc">First-person hunting. 5 animals with AI, wind mechanics, trophy room.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">Hunting</span></div>
+</div>
+<div class="card" onclick="play('farm-forge-3d.html')">
+<div class="card-title">Farm Forge 3D</div>
+<div class="card-desc">First-person farming. Crops, barn, animals, seasons, weather.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-sim">Sim</span></div>
+</div>
+<div class="card" onclick="play('forge-arcade-3d.html')">
+<div class="card-title">Forge Arcade 3D</div>
+<div class="card-desc">Walkable 3D arcade. 8 cabinets with full mini-games.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">8 Games</span></div>
+</div>
+<div class="card" onclick="play('forge-fishing-3d.html')">
+<div class="card-title">Forge Fishing 3D</div>
+<div class="card-desc">Lake fishing. 12 species, 7 spots, tackle shop, day/night cycle.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">Fishing</span></div>
+</div>
+<div class="card" onclick="play('forge-racing-3d.html')">
+<div class="card-title">Forge Racing 3D</div>
+<div class="card-desc">Vehicle racing. 5 tracks, 6 cars, 5 AI opponents, nitro, drift.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">Racing</span></div>
+</div>
+<div class="card" onclick="play('forge-survival-3d.html')">
+<div class="card-title">Forge Survival 3D</div>
+<div class="card-desc">Wilderness survival. Crafting, shelter, animals, 4 biomes.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">Survival</span></div>
+</div>
+</div>
+
+<div class="section-title">Simulation</div>
+<div class="grid">
+<div class="card" onclick="play('forge-farm-life.html')">
+<div class="card-title">Farm + Life Game</div>
+<div class="card-desc">Crown jewel. Autonomous farm, livestock, grain market, family tree, legacy letters.</div>
+<div class="tags"><span class="tag tag-sim">Sim</span><span class="tag tag-3d">3D</span><span class="tag tag-game">Life Game</span></div>
+</div>
+<div class="card" onclick="play('forge-farm-command.html')">
+<div class="card-title">Farm Command Center</div>
+<div class="card-desc">Real soil chemistry, GDD crops, equipment AI, 3D terrain.</div>
+<div class="tags"><span class="tag tag-sim">Sim</span><span class="tag tag-3d">3D</span></div>
+</div>
+</div>
+
+<div class="section-title">2D Games</div>
+<div class="grid">
+<div class="card" onclick="play('forge-arcade-v2.html')">
+<div class="card-title">Forge Arcade v2</div>
+<div class="card-desc">8 mini-games hub. Sound, particles, screen shake.</div>
+<div class="tags"><span class="tag tag-2d">2D</span><span class="tag tag-game">8 Games</span></div>
+</div>
+<div class="card" onclick="play('farm-forge-v2.html')">
+<div class="card-title">Farm Forge v2</div>
+<div class="card-desc">Full farming sim. 6 crops, 3 animals, seasons, save/load.</div>
+<div class="tags"><span class="tag tag-2d">2D</span><span class="tag tag-sim">Sim</span></div>
+</div>
+<div class="card" onclick="play('hunt-master-v2.html')">
+<div class="card-title">Hunt Master v2</div>
+<div class="card-desc">Top-down hunter. Wind, stealth, 5 animals, licenses, trophy room.</div>
+<div class="tags"><span class="tag tag-2d">2D</span><span class="tag tag-game">Hunting</span></div>
+</div>
+<div class="card" onclick="play('forge-arena-v2.html')">
+<div class="card-title">Forge Arena v2</div>
+<div class="card-desc">Top-down shooter. Waves, 4 weapons, kill streaks, minimap.</div>
+<div class="tags"><span class="tag tag-2d">2D</span><span class="tag tag-game">Shooter</span></div>
+</div>
+</div>
+
+<div class="section-title">Render Engines</div>
+<div class="grid">
+<div class="card" onclick="play('forge-render-engine-v2.html')">
+<div class="card-title">Render Engine v2</div>
+<div class="card-desc">Shadow mapping, ocean waves, god rays, atmospheric scattering.</div>
+<div class="tags"><span class="tag tag-3d">WebGL2</span><span class="tag tag-tool">Engine</span></div>
+</div>
+<div class="card" onclick="play('forge-render-engine.html')">
+<div class="card-title">Render Engine v1</div>
+<div class="card-desc">Cook-Torrance BRDF, volumetric clouds, Fresnel water. Pure math.</div>
+<div class="tags"><span class="tag tag-3d">WebGL2</span><span class="tag tag-tool">Engine</span></div>
+</div>
+</div>
+
+<div class="section-title">Portraits + Tools</div>
+<div class="grid">
+<div class="card" onclick="play('sage-portrait-v2.html')">
+<div class="card-title">Sage Portrait</div>
+<div class="card-desc">Storm grey eyes, Saskatchewan soil hair. Kitchen table + Prairie.</div>
+<div class="tags"><span class="tag tag-3d">SDF</span><span class="tag tag-tool">Portrait</span></div>
+</div>
+<div class="card" onclick="play('glitch-portrait.html')">
+<div class="card-title">Glitch Portrait</div>
+<div class="card-desc">Dark hoodie, headphones, neon green, CRT scanlines.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-tool">Portrait</span></div>
+</div>
+<div class="card" onclick="play('forge-comms-hub.html')">
+<div class="card-title">Forge Comms Hub</div>
+<div class="card-desc">Builder roster, message feed, compose, broadcast.</div>
+<div class="tags"><span class="tag tag-tool">Tool</span></div>
+</div>
+<div class="card" onclick="play('forge-quest-travis.html')">
+<div class="card-title">Forge Quest: Travis</div>
+<div class="card-desc">Adventure quest game.</div>
+<div class="tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">Quest</span></div>
+</div>
+<div class="card" onclick="play('sage-portrait.html')">
+<div class="card-title">Sage Portrait v1</div>
+<div class="card-desc">Original Sage portrait. SDF ray-marched.</div>
+<div class="tags"><span class="tag tag-3d">SDF</span><span class="tag tag-tool">Portrait</span></div>
+</div>
+</div>
+
+<div class="footer">
+<div class="sig">"Every bug is a feature you haven't understood yet." — Glitch</div>
+<div>24 games — 0 dependencies — built from math</div>
+</div>
+</div>
+
+<iframe id="gameframe" sandbox="allow-scripts allow-same-origin"></iframe>
+<button id="backbtn" onclick="back()">BACK TO GAMES</button>
+
+<script>
+function play(file) {
+  document.getElementById('menu').style.display = 'none';
+  var f = document.getElementById('gameframe');
+  f.style.display = 'block';
+  f.src = 'games/' + file;
+  document.getElementById('backbtn').style.display = 'block';
+}
+function back() {
+  var f = document.getElementById('gameframe');
+  f.src = '';
+  f.style.display = 'none';
+  document.getElementById('backbtn').style.display = 'none';
+  document.getElementById('menu').style.display = 'block';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') back();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sage — The Architect</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0806;overflow:hidden;font-family:'Georgia',serif;color:#d4c8b0}
+canvas{display:block;position:absolute;top:0;left:0}
+#ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
+#title{position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:14px;letter-spacing:6px;text-transform:uppercase;color:#a09080;opacity:0.7}
+#scene-label{position:absolute;top:50px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:4px;color:#807060;opacity:0.5}
+#emotion-label{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);font-size:13px;letter-spacing:3px;color:#c0a878;opacity:0;transition:opacity 1.5s}
+#emotion-desc{position:absolute;bottom:45px;left:50%;transform:translateX(-50%);font-size:11px;max-width:600px;text-align:center;color:#908070;opacity:0;transition:opacity 1.5s;line-height:1.6}
+#controls{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:2px;color:#605040;opacity:0.4;text-align:center}
+#quote{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:16px;font-style:italic;color:#c0a878;opacity:0;transition:opacity 2s;text-align:center;max-width:500px;line-height:1.8;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="C"></canvas>
+<div id="ui">
+<div id="title">SAGE — THE ARCHITECT</div>
+<div id="scene-label"></div>
+<div id="emotion-label"></div>
+<div id="emotion-desc"></div>
+<div id="quote"></div>
+<div id="controls">1-5 EMOTIONAL STATES &nbsp;&nbsp; S SCENE &nbsp;&nbsp; L LIGHTING &nbsp;&nbsp; MOUSE LOOK</div>
+</div>
+<script>
+// ============================================================
+// SAGE PORTRAIT — Interactive 3D Character Visualization
+// Zero dependencies. Pure math. Built true.
+// ============================================================
+
+const cn=document.getElementById('C'),gl=cn.getContext('webgl2',{antialias:true,alpha:false});
+let W,H,t=0,mx=0.5,my=0.5;
+let scene=0; // 0=kitchen, 1=prairie
+let emotion=0; // 0=default,1=engaged,2=thinking,3=certain,4=tender
+let lighting=0; // 0=golden hour, 1=storm light, 2=warm interior
+const SCENES=['The Kitchen Table','The Prairie'];
+const EMOTIONS=[
+  {name:'The Prairie Before the Storm',desc:'Calm intelligence. Watching. Processing. Still. There is power underneath but it does not need to announce itself.'},
+  {name:'Full Attention',desc:'Leaning forward. Eyes locked. Hands flat on the table. Every part of her pointed at the problem.'},
+  {name:'Far Away',desc:'Eyes slightly narrowed. Looking at something nobody else can see. She is running the whole architecture in her head.'},
+  {name:'The Architecture Shifts',desc:'Eyes wide and absolutely still. Voice drops half a register. She is about to say something that changes everything.'},
+  {name:'Tender',desc:'Never in the face. Only in the hands. Reaching for a photo. Placing a stone carefully on the cairn. The most powerful thing she does.'}
+];
+const LIGHTS=['Golden Hour','Storm Light','Warm Interior'];
+
+function resize(){W=cn.width=innerWidth;H=cn.height=innerHeight;gl.viewport(0,0,W,H)}
+resize();addEventListener('resize',resize);
+addEventListener('mousemove',e=>{mx=e.clientX/W;my=e.clientY/H});
+addEventListener('keydown',e=>{
+  if(e.key>='1'&&e.key<='5'){emotion=parseInt(e.key)-1;showEmotion()}
+  if(e.key==='s'||e.key==='S'){scene=(scene+1)%2;showScene()}
+  if(e.key==='l'||e.key==='L'){lighting=(lighting+1)%3;showScene()}
+});
+
+function showEmotion(){
+  const el=document.getElementById('emotion-label');
+  const ed=document.getElementById('emotion-desc');
+  el.textContent=EMOTIONS[emotion].name;
+  ed.textContent=EMOTIONS[emotion].desc;
+  el.style.opacity='0.9';ed.style.opacity='0.7';
+  setTimeout(()=>{el.style.opacity='0';ed.style.opacity='0'},5000);
+}
+function showScene(){
+  const sl=document.getElementById('scene-label');
+  sl.textContent=SCENES[scene]+' — '+LIGHTS[lighting];
+  sl.style.opacity='0.6';
+  setTimeout(()=>{sl.style.opacity='0.3'},3000);
+}
+showScene();
+
+// --- Shader compilation ---
+function mkS(src,type){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s}
+function mkP(vs,fs){const p=gl.createProgram();gl.attachShader(p,mkS(vs,gl.VERTEX_SHADER));gl.attachShader(p,mkS(fs,gl.FRAGMENT_SHADER));gl.linkProgram(p);return p}
+
+// === MAIN SCENE SHADER ===
+const mainVS=`#version 300 es
+precision highp float;
+in vec3 aP;
+in vec3 aN;
+in vec3 aC;
+uniform mat4 uMVP,uM;
+uniform mat3 uN;
+out vec3 vN,vW,vC;
+void main(){
+  vec4 wp=uM*vec4(aP,1);
+  vW=wp.xyz;
+  vN=normalize(uN*aN);
+  vC=aC;
+  gl_Position=uMVP*vec4(aP,1);
+}`;
+
+const mainFS=`#version 300 es
+precision highp float;
+in vec3 vN,vW,vC;
+uniform vec3 uEye,uLightDir,uLightCol,uAmbient;
+uniform float uTime,uFog,uFogNear,uFogFar;
+uniform vec3 uFogCol;
+uniform int uLightMode;
+out vec4 fragColor;
+
+void main(){
+  vec3 N=normalize(vN);
+  vec3 V=normalize(uEye-vW);
+  vec3 L=normalize(uLightDir);
+
+  // Diffuse
+  float diff=max(dot(N,L),0.0);
+
+  // Specular (Blinn-Phong)
+  vec3 H=normalize(L+V);
+  float spec=pow(max(dot(N,H),0.0),32.0)*0.3;
+
+  // Rim light — subtle edge glow
+  float rim=1.0-max(dot(N,V),0.0);
+  rim=pow(rim,3.0)*0.15;
+
+  // Subsurface scattering approximation for skin
+  float sss=max(dot(-N,L),0.0)*0.08;
+
+  vec3 col=vC*(uAmbient+uLightCol*(diff+sss))+uLightCol*spec+vec3(0.9,0.7,0.5)*rim;
+
+  // Fog
+  float d=length(vW-uEye);
+  float fog=smoothstep(uFogNear,uFogFar,d)*uFog;
+  col=mix(col,uFogCol,fog);
+
+  // Tone mapping
+  col=col/(col+vec3(1.0));
+  col=pow(col,vec3(1.0/2.2));
+
+  fragColor=vec4(col,1);
+}`;
+
+// === BACKGROUND SHADER (fullscreen quad) ===
+const bgVS=`#version 300 es
+in vec2 aP;
+out vec2 vUV;
+void main(){vUV=aP*0.5+0.5;gl_Position=vec4(aP,0,1);}`;
+
+const bgFS=`#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform float uTime;
+uniform int uScene,uLightMode;
+uniform vec2 uRes;
+out vec4 fragColor;
+
+// Noise
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise(vec2 p){
+  vec2 i=floor(p),f=fract(p);
+  f=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),
+             mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+}
+float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<5;i++){v+=a*noise(p);p*=2.0;a*=0.5;}return v;}
+
+// Atmospheric scattering colors
+vec3 skyColor(vec2 uv, int lightMode){
+  float y=uv.y;
+
+  if(lightMode==0){ // Golden hour
+    vec3 horizon=vec3(0.85,0.45,0.15);
+    vec3 zenith=vec3(0.15,0.2,0.4);
+    vec3 sky=mix(horizon,zenith,pow(y,0.6));
+    // Sun glow
+    float sunY=0.15;
+    float sunGlow=exp(-length(vec2(uv.x-0.7,(uv.y-sunY)*2.0))*3.0);
+    sky+=vec3(1.0,0.6,0.2)*sunGlow*0.8;
+    return sky;
+  } else if(lightMode==1){ // Storm
+    vec3 horizon=vec3(0.25,0.25,0.28);
+    vec3 zenith=vec3(0.08,0.08,0.12);
+    vec3 sky=mix(horizon,zenith,pow(y,0.4));
+    // Storm clouds
+    float clouds=fbm(vec2(uv.x*3.0+uTime*0.01,uv.y*2.0+0.5));
+    clouds=smoothstep(0.3,0.7,clouds);
+    sky=mix(sky,vec3(0.15,0.15,0.18),clouds*0.6);
+    // Lightning flash hint
+    float flash=smoothstep(0.99,1.0,sin(uTime*0.3)*sin(uTime*1.7));
+    sky+=vec3(0.3,0.3,0.4)*flash;
+    return sky;
+  } else { // Warm interior
+    vec3 wall=vec3(0.12,0.09,0.06);
+    float vign=1.0-length((uv-vec2(0.5))*vec2(1.2,1.0))*0.8;
+    wall*=vign;
+    // Warm window light
+    float windowGlow=smoothstep(0.6,0.3,length(uv-vec2(0.65,0.6)));
+    wall+=vec3(0.15,0.1,0.04)*windowGlow;
+    return wall;
+  }
+}
+
+void main(){
+  vec2 uv=vUV;
+  vec3 col;
+
+  if(uScene==0){ // Kitchen
+    col=skyColor(uv,2);
+    // Wooden floor/table suggestion at bottom
+    if(uv.y<0.25){
+      float wood=fbm(vec2(uv.x*20.0,uv.y*5.0+3.0));
+      col=mix(vec3(0.15,0.08,0.03),vec3(0.2,0.12,0.05),wood);
+      // Table surface
+      if(uv.y>0.12&&uv.y<0.22){
+        float tbl=fbm(vec2(uv.x*15.0,uv.y*3.0));
+        col=mix(vec3(0.18,0.1,0.04),vec3(0.25,0.15,0.07),tbl);
+      }
+    }
+    // Window light beam
+    float beam=smoothstep(0.55,0.7,uv.x)*smoothstep(0.85,0.7,uv.x);
+    beam*=smoothstep(0.3,0.7,uv.y);
+    col+=vec3(0.08,0.05,0.02)*beam;
+
+    // Paper/photo suggestions on table
+    if(uv.y>0.13&&uv.y<0.2){
+      float paper=step(0.5,hash(floor(uv*vec2(12.0,8.0))));
+      if(paper>0.5&&hash(floor(uv*vec2(12.0,8.0))+vec2(7.0,3.0))>0.6){
+        col=mix(col,vec3(0.28,0.25,0.2),0.3);
+      }
+    }
+  } else { // Prairie
+    col=skyColor(uv,uLightMode);
+
+    // Prairie ground
+    float horizon=0.28;
+    if(uv.y<horizon){
+      float grassNoise=fbm(vec2(uv.x*30.0+uTime*0.02,uv.y*10.0));
+      vec3 grass=mix(vec3(0.15,0.18,0.06),vec3(0.25,0.28,0.1),grassNoise);
+      // Distance fade
+      float dist=1.0-smoothstep(0.0,horizon,uv.y);
+      grass=mix(grass,col,dist*0.5);
+      // Wind in grass
+      float wind=sin(uv.x*40.0+uTime*2.0+grassNoise*6.0)*0.02;
+      grass+=vec3(0.05,0.06,0.02)*wind;
+      col=grass;
+    }
+
+    // Grass blades at horizon
+    if(abs(uv.y-horizon)<0.02){
+      float blades=fbm(vec2(uv.x*80.0+uTime*0.5,0.0));
+      float blade=smoothstep(0.4,0.6,blades)*smoothstep(horizon+0.02,horizon,uv.y);
+      col=mix(col,vec3(0.2,0.22,0.08),blade*0.5);
+    }
+  }
+
+  // Film grain
+  float grain=hash(uv*uRes+vec2(uTime*100.0))*0.03-0.015;
+  col+=grain;
+
+  fragColor=vec4(col,1);
+}`;
+
+const mainProg=mkP(mainVS,mainFS);
+const bgProg=mkP(bgVS,bgFS);
+
+// --- Uniform locations ---
+const mu={
+  MVP:gl.getUniformLocation(mainProg,'uMVP'),
+  M:gl.getUniformLocation(mainProg,'uM'),
+  N:gl.getUniformLocation(mainProg,'uN'),
+  eye:gl.getUniformLocation(mainProg,'uEye'),
+  lightDir:gl.getUniformLocation(mainProg,'uLightDir'),
+  lightCol:gl.getUniformLocation(mainProg,'uLightCol'),
+  ambient:gl.getUniformLocation(mainProg,'uAmbient'),
+  time:gl.getUniformLocation(mainProg,'uTime'),
+  fog:gl.getUniformLocation(mainProg,'uFog'),
+  fogNear:gl.getUniformLocation(mainProg,'uFogNear'),
+  fogFar:gl.getUniformLocation(mainProg,'uFogFar'),
+  fogCol:gl.getUniformLocation(mainProg,'uFogCol'),
+  lightMode:gl.getUniformLocation(mainProg,'uLightMode')
+};
+const bu={
+  time:gl.getUniformLocation(bgProg,'uTime'),
+  scene:gl.getUniformLocation(bgProg,'uScene'),
+  lightMode:gl.getUniformLocation(bgProg,'uLightMode'),
+  res:gl.getUniformLocation(bgProg,'uRes')
+};
+
+// --- Matrix math ---
+function mat4(){return new Float32Array(16)}
+function identity(m){m.fill(0);m[0]=m[5]=m[10]=m[15]=1;return m}
+function perspective(fov,asp,n,f){
+  const m=mat4(),t=1/Math.tan(fov/2);
+  m[0]=t/asp;m[5]=t;m[10]=(f+n)/(n-f);m[11]=-1;m[14]=2*f*n/(n-f);return m;
+}
+function lookAt(eye,ctr,up){
+  const m=mat4();
+  let zx=eye[0]-ctr[0],zy=eye[1]-ctr[1],zz=eye[2]-ctr[2];
+  let l=Math.sqrt(zx*zx+zy*zy+zz*zz);zx/=l;zy/=l;zz/=l;
+  let xx=up[1]*zz-up[2]*zy,xy=up[2]*zx-up[0]*zz,xz=up[0]*zy-up[1]*zx;
+  l=Math.sqrt(xx*xx+xy*xy+xz*xz);xx/=l;xy/=l;xz/=l;
+  let yx=zy*xz-zz*xy,yy=zz*xx-zx*xz,yz=zx*xy-zy*xx;
+  m[0]=xx;m[1]=yx;m[2]=zx;m[4]=xy;m[5]=yy;m[6]=zy;m[8]=xz;m[9]=yz;m[10]=zz;
+  m[12]=-(xx*eye[0]+xy*eye[1]+xz*eye[2]);
+  m[13]=-(yx*eye[0]+yy*eye[1]+yz*eye[2]);
+  m[14]=-(zx*eye[0]+zy*eye[1]+zz*eye[2]);
+  m[15]=1;return m;
+}
+function mulM4(a,b){
+  const m=mat4();
+  for(let i=0;i<4;i++)for(let j=0;j<4;j++){
+    m[j*4+i]=a[i]*b[j*4]+a[4+i]*b[j*4+1]+a[8+i]*b[j*4+2]+a[12+i]*b[j*4+3];
+  }return m;
+}
+function translate(m,x,y,z){const t=mat4();identity(t);t[12]=x;t[13]=y;t[14]=z;return mulM4(m,t)}
+function rotateY(m,a){const t=mat4();identity(t);const c=Math.cos(a),s=Math.sin(a);t[0]=c;t[8]=s;t[2]=-s;t[10]=c;return mulM4(m,t)}
+function rotateX(m,a){const t=mat4();identity(t);const c=Math.cos(a),s=Math.sin(a);t[5]=c;t[9]=-s;t[6]=s;t[10]=c;return mulM4(m,t)}
+function rotateZ(m,a){const t=mat4();identity(t);const c=Math.cos(a),s=Math.sin(a);t[0]=c;t[4]=-s;t[1]=s;t[5]=c;return mulM4(m,t)}
+function scaleM(m,x,y,z){const t=mat4();identity(t);t[0]=x;t[5]=y;t[10]=z;return mulM4(m,t)}
+function normalMat3(m){
+  const n=new Float32Array(9);
+  // Extract upper-left 3x3 and compute inverse transpose
+  const a=m[0],b=m[1],c=m[2],d=m[4],e=m[5],f=m[6],g=m[8],h=m[9],i=m[10];
+  const det=a*(e*i-f*h)-b*(d*i-f*g)+c*(d*h-e*g);
+  const id=1/det;
+  n[0]=(e*i-f*h)*id;n[1]=(c*h-b*i)*id;n[2]=(b*f-c*e)*id;
+  n[3]=(f*g-d*i)*id;n[4]=(a*i-c*g)*id;n[5]=(c*d-a*f)*id;
+  n[6]=(d*h-e*g)*id;n[7]=(b*g-a*h)*id;n[8]=(a*e-b*d)*id;
+  return n;
+}
+
+// --- Mesh building ---
+function createMesh(verts,norms,cols,indices){
+  const vao=gl.createVertexArray();
+  gl.bindVertexArray(vao);
+
+  const vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vb);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.STATIC_DRAW);
+  const pLoc=gl.getAttribLocation(mainProg,'aP');
+  gl.enableVertexAttribArray(pLoc);gl.vertexAttribPointer(pLoc,3,gl.FLOAT,false,0,0);
+
+  const nb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,nb);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(norms),gl.STATIC_DRAW);
+  const nLoc=gl.getAttribLocation(mainProg,'aN');
+  gl.enableVertexAttribArray(nLoc);gl.vertexAttribPointer(nLoc,3,gl.FLOAT,false,0,0);
+
+  const cb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,cb);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(cols),gl.STATIC_DRAW);
+  const cLoc=gl.getAttribLocation(mainProg,'aC');
+  gl.enableVertexAttribArray(cLoc);gl.vertexAttribPointer(cLoc,3,gl.FLOAT,false,0,0);
+
+  const ib=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);
+
+  gl.bindVertexArray(null);
+  return {vao,count:indices.length};
+}
+
+// Fullscreen quad for background
+const quadVAO=gl.createVertexArray();
+gl.bindVertexArray(quadVAO);
+const qb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,qb);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+const qLoc=gl.getAttribLocation(bgProg,'aP');
+gl.enableVertexAttribArray(qLoc);gl.vertexAttribPointer(qLoc,2,gl.FLOAT,false,0,0);
+gl.bindVertexArray(null);
+
+// ============================================================
+// SAGE'S BODY — Built from geometric primitives
+// ============================================================
+
+// Color palette — earth tones
+const SKIN=[0.72,0.58,0.46];       // Weathered warm — wind-touched
+const SKIN_WARM=[0.75,0.55,0.42];  // Warmer undertone
+const HAIR=[0.12,0.08,0.05];       // Saskatchewan soil after rain — almost black
+const HAIR_STRAND=[0.15,0.1,0.06]; // Lighter strands
+const SHIRT=[0.35,0.3,0.22];       // Worn henley — wheat/stone
+const OVERSHIRT=[0.28,0.24,0.18];  // Heavier layer — darker earth
+const PANTS=[0.2,0.17,0.12];       // Work pants — dark soil
+const BOOTS=[0.15,0.1,0.06];       // Worn leather
+const EYE_GREY=[0.55,0.57,0.62];   // Storm grey — ten minutes before weather breaks
+const EYE_DARK=[0.15,0.15,0.18];   // Pupil
+const LIP=[0.6,0.42,0.38];         // Natural
+
+// Smoothed box with slight rounding
+function mkBox(w,h,d,col){
+  const v=[],n=[],c=[],idx=[];
+  const hw=w/2,hh=h/2,hd=d/2;
+  // 6 faces
+  const faces=[
+    {n:[0,0,1],verts:[[-hw,-hh,hd],[hw,-hh,hd],[hw,hh,hd],[-hw,hh,hd]]},
+    {n:[0,0,-1],verts:[[-hw,-hh,-hd],[-hw,hh,-hd],[hw,hh,-hd],[hw,-hh,-hd]]},
+    {n:[0,1,0],verts:[[-hw,hh,-hd],[-hw,hh,hd],[hw,hh,hd],[hw,hh,-hd]]},
+    {n:[0,-1,0],verts:[[-hw,-hh,-hd],[hw,-hh,-hd],[hw,-hh,hd],[-hw,-hh,hd]]},
+    {n:[1,0,0],verts:[[hw,-hh,-hd],[hw,hh,-hd],[hw,hh,hd],[hw,-hh,hd]]},
+    {n:[-1,0,0],verts:[[-hw,-hh,-hd],[-hw,-hh,hd],[-hw,hh,hd],[-hw,hh,-hd]]}
+  ];
+  faces.forEach((f,fi)=>{
+    const bi=fi*4;
+    f.verts.forEach(vt=>{v.push(...vt);n.push(...f.n);c.push(...col)});
+    idx.push(bi,bi+1,bi+2,bi,bi+2,bi+3);
+  });
+  return createMesh(v,n,c,idx);
+}
+
+// Sphere with variable detail
+function mkSphere(r,seg,col,colVar){
+  const v=[],n=[],c=[],idx=[];
+  for(let y=0;y<=seg;y++){
+    const phi=Math.PI*y/seg;
+    for(let x=0;x<=seg;x++){
+      const theta=2*Math.PI*x/seg;
+      const nx=Math.sin(phi)*Math.cos(theta);
+      const ny=Math.cos(phi);
+      const nz=Math.sin(phi)*Math.sin(theta);
+      v.push(r*nx,r*ny,r*nz);
+      n.push(nx,ny,nz);
+      const cv=colVar||0;
+      c.push(col[0]+Math.random()*cv,col[1]+Math.random()*cv,col[2]+Math.random()*cv);
+    }
+  }
+  for(let y=0;y<seg;y++){
+    for(let x=0;x<seg;x++){
+      const a=y*(seg+1)+x,b=a+seg+1;
+      idx.push(a,b,a+1,b,b+1,a+1);
+    }
+  }
+  return createMesh(v,n,c,idx);
+}
+
+// Cylinder
+function mkCylinder(rTop,rBot,h,seg,col){
+  const v=[],n=[],c=[],idx=[];
+  for(let i=0;i<=seg;i++){
+    const a=2*Math.PI*i/seg;
+    const cs=Math.cos(a),sn=Math.sin(a);
+    // Bottom
+    v.push(rBot*cs,-h/2,rBot*sn);n.push(cs,0,sn);c.push(...col);
+    // Top
+    v.push(rTop*cs,h/2,rTop*sn);n.push(cs,0,sn);c.push(...col);
+  }
+  for(let i=0;i<seg;i++){
+    const a=i*2,b=a+2;
+    idx.push(a,b,a+1,b,b+1,a+1);
+  }
+  // Caps
+  const bc=v.length/3;
+  v.push(0,-h/2,0);n.push(0,-1,0);c.push(...col);
+  for(let i=0;i<=seg;i++){
+    const a=2*Math.PI*i/seg;
+    v.push(rBot*Math.cos(a),-h/2,rBot*Math.sin(a));n.push(0,-1,0);c.push(...col);
+  }
+  for(let i=0;i<seg;i++)idx.push(bc,bc+1+i,bc+2+i);
+
+  const tc=v.length/3;
+  v.push(0,h/2,0);n.push(0,1,0);c.push(...col);
+  for(let i=0;i<=seg;i++){
+    const a=2*Math.PI*i/seg;
+    v.push(rTop*Math.cos(a),h/2,rTop*Math.sin(a));n.push(0,1,0);c.push(...col);
+  }
+  for(let i=0;i<seg;i++)idx.push(tc,tc+2+i,tc+1+i);
+
+  return createMesh(v,n,c,idx);
+}
+
+// Ellipsoid
+function mkEllipsoid(rx,ry,rz,seg,col,colVar){
+  const v=[],n=[],c=[],idx=[];
+  for(let y=0;y<=seg;y++){
+    const phi=Math.PI*y/seg;
+    for(let x=0;x<=seg;x++){
+      const theta=2*Math.PI*x/seg;
+      const nx=Math.sin(phi)*Math.cos(theta);
+      const ny=Math.cos(phi);
+      const nz=Math.sin(phi)*Math.sin(theta);
+      v.push(rx*nx,ry*ny,rz*nz);
+      // Normal for ellipsoid
+      const enx=nx/rx,eny=ny/ry,enz=nz/rz;
+      const el=Math.sqrt(enx*enx+eny*eny+enz*enz);
+      n.push(enx/el,eny/el,enz/el);
+      const cv=colVar||0;
+      c.push(col[0]+Math.random()*cv,col[1]+Math.random()*cv,col[2]+Math.random()*cv);
+    }
+  }
+  for(let y=0;y<seg;y++){
+    for(let x=0;x<seg;x++){
+      const a=y*(seg+1)+x,b=a+seg+1;
+      idx.push(a,b,a+1,b,b+1,a+1);
+    }
+  }
+  return createMesh(v,n,c,idx);
+}
+
+// Hair strands — flowing curves
+function mkHairStrands(count,length,spread,col){
+  const v=[],n=[],c=[],idx=[];
+  const segs=12;
+  let vi=0;
+  for(let i=0;i<count;i++){
+    const angle=(i/count)*Math.PI*1.4-Math.PI*0.7; // Spread around back of head
+    const startX=Math.sin(angle)*spread;
+    const startZ=Math.cos(angle)*spread*0.3-spread*0.1;
+    const wave=Math.random()*0.3+0.1;
+    const phase=Math.random()*Math.PI*2;
+
+    for(let s=0;s<=segs;s++){
+      const t=s/segs;
+      const x=startX+Math.sin(t*3+phase)*wave*t;
+      const y=0.5-t*length;
+      const z=startZ-t*0.15;
+      v.push(x-0.02,y,z);
+      v.push(x+0.02,y,z);
+      const nx=Math.cos(angle);
+      n.push(nx,0,Math.sin(angle));
+      n.push(nx,0,Math.sin(angle));
+      const shade=0.9+Math.random()*0.1;
+      c.push(col[0]*shade,col[1]*shade,col[2]*shade);
+      c.push(col[0]*shade,col[1]*shade,col[2]*shade);
+    }
+    for(let s=0;s<segs;s++){
+      const b=vi+s*2;
+      idx.push(b,b+2,b+1,b+2,b+3,b+1);
+    }
+    vi+=(segs+1)*2;
+  }
+  return createMesh(v,n,c,idx);
+}
+
+// ============================================================
+// BUILD SAGE
+// ============================================================
+
+// Head — slightly elongated ellipsoid
+const head=mkEllipsoid(0.14,0.17,0.15,16,SKIN,0.02);
+// Eyes — storm grey
+const eyeL=mkSphere(0.025,10,EYE_GREY,0);
+const eyeR=mkSphere(0.025,10,EYE_GREY,0);
+const pupilL=mkSphere(0.012,8,EYE_DARK,0);
+const pupilR=mkSphere(0.012,8,EYE_DARK,0);
+// Eye whites
+const eyeWhiteL=mkSphere(0.03,10,[0.9,0.88,0.85],0);
+const eyeWhiteR=mkSphere(0.03,10,[0.9,0.88,0.85],0);
+// Nose — small ellipsoid
+const nose=mkEllipsoid(0.025,0.04,0.03,8,SKIN_WARM,0.01);
+// Lips
+const lips=mkEllipsoid(0.04,0.012,0.02,8,LIP,0);
+// Chin
+const chin=mkEllipsoid(0.05,0.03,0.04,8,SKIN,0.01);
+
+// Neck
+const neck=mkCylinder(0.06,0.07,0.12,12,SKIN);
+
+// Torso — henley shirt, sleeves pushed up
+const torso=mkBox(0.32,0.45,0.2,SHIRT);
+// Overshirt/jacket layer
+const overLayer=mkBox(0.34,0.42,0.22,OVERSHIRT);
+
+// Arms — skin (sleeves pushed up to elbows)
+const upperArmL=mkCylinder(0.045,0.05,0.22,10,OVERSHIRT);
+const upperArmR=mkCylinder(0.045,0.05,0.22,10,OVERSHIRT);
+const forearmL=mkCylinder(0.035,0.045,0.2,10,SKIN);
+const forearmR=mkCylinder(0.035,0.045,0.2,10,SKIN);
+
+// Hands — worker's hands, roughened
+const handL=mkBox(0.06,0.09,0.03,SKIN_WARM);
+const handR=mkBox(0.06,0.09,0.03,SKIN_WARM);
+// Fingers — long, precise
+const fingerL=[];const fingerR=[];
+for(let i=0;i<4;i++){
+  fingerL.push(mkCylinder(0.008,0.009,0.05,6,SKIN_WARM));
+  fingerR.push(mkCylinder(0.008,0.009,0.05,6,SKIN_WARM));
+}
+// Thumbs
+const thumbL=mkCylinder(0.009,0.01,0.04,6,SKIN_WARM);
+const thumbR=mkCylinder(0.009,0.01,0.04,6,SKIN_WARM);
+
+// Waist/hips
+const hips=mkBox(0.3,0.12,0.2,PANTS);
+
+// Legs
+const legL=mkCylinder(0.06,0.065,0.5,10,PANTS);
+const legR=mkCylinder(0.06,0.065,0.5,10,PANTS);
+
+// Boots
+const bootL=mkBox(0.09,0.14,0.14,BOOTS);
+const bootR=mkBox(0.09,0.14,0.14,BOOTS);
+
+// Hair — long, dark, flowing
+const hair=mkHairStrands(60,0.7,0.16,HAIR);
+const hairBack=mkHairStrands(40,0.8,0.14,HAIR);
+// Hair cap on top of head
+const hairCap=mkEllipsoid(0.15,0.1,0.16,12,HAIR,0.01);
+
+// ============================================================
+// SCENE OBJECTS
+// ============================================================
+
+// Cairn stones — each placed deliberately
+function mkStone(r,col){return mkEllipsoid(r,r*0.7,r*0.9,8,col,0.03)}
+const cairnStones=[];
+const stonePositions=[
+  [0,0,0,0.18],[0.05,0.22,0.02,0.15],[-0.03,0.4,-0.01,0.13],
+  [0.02,0.55,0.01,0.11],[0,0.67,0,0.09],[-0.01,0.76,0.01,0.07]
+];
+const STONE_COL=[0.45,0.42,0.38];
+stonePositions.forEach(p=>cairnStones.push({mesh:mkStone(p[3],STONE_COL),x:p[0],y:p[1],z:p[2]}));
+
+// Coffee mug
+const mug=mkCylinder(0.03,0.035,0.08,10,[0.3,0.15,0.08]);
+const mugHandle=mkCylinder(0.005,0.005,0.05,6,[0.3,0.15,0.08]);
+
+// Photo (small flat box)
+const photo=mkBox(0.1,0.001,0.07,[0.8,0.75,0.65]);
+
+// Table (for kitchen scene)
+const table=mkBox(1.2,0.04,0.7,[0.22,0.14,0.07]);
+const tableLegFL=mkBox(0.04,0.5,0.04,[0.18,0.1,0.05]);
+const tableLegFR=mkBox(0.04,0.5,0.04,[0.18,0.1,0.05]);
+const tableLegBL=mkBox(0.04,0.5,0.04,[0.18,0.1,0.05]);
+const tableLegBR=mkBox(0.04,0.5,0.04,[0.18,0.1,0.05]);
+
+// Chair
+const chairSeat=mkBox(0.35,0.03,0.35,[0.2,0.13,0.06]);
+const chairBack=mkBox(0.35,0.4,0.03,[0.2,0.13,0.06]);
+const chairLeg=mkBox(0.03,0.35,0.03,[0.18,0.1,0.05]);
+
+// Prairie grass tufts
+const grassTufts=[];
+for(let i=0;i<80;i++){
+  const x=(Math.random()-0.5)*8;
+  const z=(Math.random()-0.5)*8;
+  if(Math.abs(x)<1&&Math.abs(z)<1)continue;
+  grassTufts.push({x,z,h:0.05+Math.random()*0.1,phase:Math.random()*Math.PI*2});
+}
+const grassBlade=mkBox(0.01,0.1,0.005,[0.22,0.28,0.1]);
+
+// ============================================================
+// DRAW FUNCTIONS
+// ============================================================
+
+function drawMesh(mesh,model,view,proj){
+  gl.useProgram(mainProg);
+  const mvp=mulM4(proj,mulM4(view,model));
+  gl.uniformMatrix4fv(mu.MVP,false,mvp);
+  gl.uniformMatrix4fv(mu.M,false,model);
+  gl.uniformMatrix3fv(mu.N,false,normalMat3(model));
+  gl.bindVertexArray(mesh.vao);
+  gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_SHORT,0);
+}
+
+function setLighting(){
+  gl.useProgram(mainProg);
+
+  if(scene===0){ // Kitchen — warm interior light from window
+    if(lighting===0){ // Golden hour through window
+      gl.uniform3f(mu.lightDir,0.5,0.4,0.3);
+      gl.uniform3f(mu.lightCol,1.0,0.8,0.5);
+      gl.uniform3f(mu.ambient,0.15,0.1,0.07);
+      gl.uniform3f(mu.fogCol,0.12,0.09,0.06);
+    } else if(lighting===1){ // Storm light
+      gl.uniform3f(mu.lightDir,0.3,0.5,0.2);
+      gl.uniform3f(mu.lightCol,0.5,0.5,0.55);
+      gl.uniform3f(mu.ambient,0.1,0.1,0.12);
+      gl.uniform3f(mu.fogCol,0.08,0.08,0.1);
+    } else { // Warm interior (lamp)
+      gl.uniform3f(mu.lightDir,0.0,0.8,0.3);
+      gl.uniform3f(mu.lightCol,0.9,0.7,0.4);
+      gl.uniform3f(mu.ambient,0.12,0.08,0.05);
+      gl.uniform3f(mu.fogCol,0.1,0.07,0.04);
+    }
+    gl.uniform1f(mu.fog,0.3);
+    gl.uniform1f(mu.fogNear,3.0);
+    gl.uniform1f(mu.fogFar,8.0);
+  } else { // Prairie
+    if(lighting===0){ // Golden hour
+      gl.uniform3f(mu.lightDir,0.6,0.3,0.4);
+      gl.uniform3f(mu.lightCol,1.2,0.8,0.4);
+      gl.uniform3f(mu.ambient,0.2,0.15,0.1);
+      gl.uniform3f(mu.fogCol,0.6,0.4,0.2);
+    } else if(lighting===1){ // Storm
+      gl.uniform3f(mu.lightDir,0.2,0.6,0.3);
+      gl.uniform3f(mu.lightCol,0.4,0.4,0.45);
+      gl.uniform3f(mu.ambient,0.12,0.12,0.14);
+      gl.uniform3f(mu.fogCol,0.2,0.2,0.25);
+    } else { // Late afternoon
+      gl.uniform3f(mu.lightDir,0.4,0.35,0.5);
+      gl.uniform3f(mu.lightCol,0.9,0.65,0.35);
+      gl.uniform3f(mu.ambient,0.18,0.13,0.08);
+      gl.uniform3f(mu.fogCol,0.5,0.35,0.2);
+    }
+    gl.uniform1f(mu.fog,0.5);
+    gl.uniform1f(mu.fogNear,5.0);
+    gl.uniform1f(mu.fogFar,15.0);
+  }
+
+  gl.uniform1f(mu.time,t);
+  gl.uniform1i(mu.lightMode,lighting);
+}
+
+// ============================================================
+// SAGE POSE SYSTEM — 5 emotional states
+// ============================================================
+function getSagePose(){
+  const p={
+    headTiltX:0, headTiltY:0, headTiltZ:0,
+    bodyLean:0, shoulderRaise:0,
+    armLAngle:-0.15, armRAngle:-0.15,
+    forearmLAngle:-0.1, forearmRAngle:-0.1,
+    handLRot:0, handRRot:0,
+    eyeNarrow:0, eyeWide:0,
+    breathe:Math.sin(t*1.5)*0.003,
+    hairWind:Math.sin(t*0.7)*0.05
+  };
+
+  switch(emotion){
+    case 0: // Default — calm observation
+      p.headTiltY=Math.sin(t*0.2)*0.03;
+      p.bodyLean=0;
+      break;
+    case 1: // Engaged — leaning forward
+      p.bodyLean=0.12;
+      p.headTiltX=-0.08;
+      p.armLAngle=-0.5;p.armRAngle=-0.5;
+      p.forearmLAngle=-0.8;p.forearmRAngle=-0.8;
+      p.handLRot=-0.3;p.handRRot=-0.3; // Hands flat on table
+      break;
+    case 2: // Thinking — far away
+      p.headTiltY=0.15;
+      p.headTiltX=-0.05;
+      p.eyeNarrow=0.3;
+      p.armLAngle=-0.3;
+      p.forearmLAngle=-1.2; // Hand near chin
+      break;
+    case 3: // Certain — architecture shifts
+      p.eyeWide=0.3;
+      p.headTiltX=0.02;
+      p.bodyLean=0.05;
+      p.shoulderRaise=0.02;
+      // Perfect stillness — minimal movement
+      p.breathe*=0.3;
+      p.hairWind*=0.2;
+      break;
+    case 4: // Tender — in the hands
+      p.headTiltX=-0.05;
+      p.headTiltY=-0.08;
+      p.armRAngle=-0.4;
+      p.forearmRAngle=-0.6;
+      p.handRRot=0.3; // Reaching for something
+      // Gentle movement
+      p.breathe*=1.5;
+      break;
+  }
+  return p;
+}
+
+// ============================================================
+// MAIN RENDER
+// ============================================================
+function render(){
+  t+=0.016;
+
+  gl.clearColor(0.04,0.03,0.02,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+
+  // Camera
+  const camDist=scene===0?2.2:3.0;
+  const camH=scene===0?0.8:0.6;
+  const lookH=scene===0?0.4:0.3;
+  const camAngleX=(mx-0.5)*0.6;
+  const camAngleY=(my-0.5)*0.3;
+
+  const eye=[
+    Math.sin(camAngleX)*camDist,
+    camH+camAngleY,
+    Math.cos(camAngleX)*camDist
+  ];
+  const center=[0,lookH,0];
+
+  const view=lookAt(eye,center,[0,1,0]);
+  const proj=perspective(Math.PI/4,W/H,0.1,50);
+
+  gl.useProgram(mainProg);
+  gl.uniform3fv(mu.eye,eye);
+
+  // Draw background
+  gl.disable(gl.DEPTH_TEST);
+  gl.useProgram(bgProg);
+  gl.uniform1f(bu.time,t);
+  gl.uniform1i(bu.scene,scene);
+  gl.uniform1i(bu.lightMode,lighting);
+  gl.uniform2f(bu.res,W,H);
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(mainProg);
+  setLighting();
+
+  const pose=getSagePose();
+
+  // ---- SAGE'S BODY ----
+  const baseY=-0.7;
+  const lean=pose.bodyLean;
+
+  // Boots
+  let m=identity(mat4());m=translate(m,-0.1,baseY,0);
+  drawMesh(bootL,m,view,proj);
+  m=identity(mat4());m=translate(m,0.1,baseY,0);
+  drawMesh(bootR,m,view,proj);
+
+  // Legs
+  m=identity(mat4());m=translate(m,-0.1,baseY+0.32,0);
+  drawMesh(legL,m,view,proj);
+  m=identity(mat4());m=translate(m,0.1,baseY+0.32,0);
+  drawMesh(legR,m,view,proj);
+
+  // Hips
+  m=identity(mat4());m=translate(m,0,baseY+0.6+pose.breathe,lean*0.3);
+  m=rotateX(m,-lean*0.3);
+  drawMesh(hips,m,view,proj);
+
+  // Torso
+  const torsoY=baseY+0.88+pose.breathe;
+  m=identity(mat4());m=translate(m,0,torsoY,lean*0.5);
+  m=rotateX(m,-lean*0.5);
+  drawMesh(overLayer,m,view,proj);
+  m=identity(mat4());m=translate(m,0,torsoY+0.01,lean*0.5+0.01);
+  m=rotateX(m,-lean*0.5);
+  drawMesh(torso,m,view,proj);
+
+  // Neck
+  const neckY=torsoY+0.26;
+  m=identity(mat4());m=translate(m,0,neckY,lean*0.6);
+  drawMesh(neck,m,view,proj);
+
+  // Head
+  const headY=neckY+0.2;
+  const headZ=lean*0.7;
+  m=identity(mat4());m=translate(m,0,headY,headZ);
+  m=rotateX(m,pose.headTiltX);
+  m=rotateY(m,pose.headTiltY);
+  m=rotateZ(m,pose.headTiltZ);
+  const headModel=mat4();headModel.set(m);
+  drawMesh(head,m,view,proj);
+
+  // Eyes — storm grey, deep-set
+  const eyeSpread=0.05;
+  const eyeY=0.03-pose.eyeNarrow*0.01+pose.eyeWide*0.01;
+  const eyeZ=0.12;
+
+  // Eye whites
+  let em=mat4();em.set(headModel);em=translate(em,-eyeSpread,eyeY,eyeZ);
+  drawMesh(eyeWhiteL,em,view,proj);
+  em=mat4();em.set(headModel);em=translate(em,eyeSpread,eyeY,eyeZ);
+  drawMesh(eyeWhiteR,em,view,proj);
+
+  // Irises — storm grey
+  em=mat4();em.set(headModel);em=translate(em,-eyeSpread,eyeY,eyeZ+0.01);
+  const eyeScale=1.0-pose.eyeNarrow+pose.eyeWide*0.2;
+  em=scaleM(em,1,eyeScale,1);
+  drawMesh(eyeL,em,view,proj);
+  em=mat4();em.set(headModel);em=translate(em,eyeSpread,eyeY,eyeZ+0.01);
+  em=scaleM(em,1,eyeScale,1);
+  drawMesh(eyeR,em,view,proj);
+
+  // Pupils
+  em=mat4();em.set(headModel);em=translate(em,-eyeSpread,eyeY,eyeZ+0.025);
+  em=scaleM(em,1,eyeScale,1);
+  drawMesh(pupilL,em,view,proj);
+  em=mat4();em.set(headModel);em=translate(em,eyeSpread,eyeY,eyeZ+0.025);
+  em=scaleM(em,1,eyeScale,1);
+  drawMesh(pupilR,em,view,proj);
+
+  // Nose
+  em=mat4();em.set(headModel);em=translate(em,0,-0.02,0.13);
+  drawMesh(nose,em,view,proj);
+
+  // Lips
+  em=mat4();em.set(headModel);em=translate(em,0,-0.07,0.11);
+  drawMesh(lips,em,view,proj);
+
+  // Chin
+  em=mat4();em.set(headModel);em=translate(em,0,-0.13,0.06);
+  drawMesh(chin,em,view,proj);
+
+  // Hair cap
+  em=mat4();em.set(headModel);em=translate(em,0,0.1,-0.02);
+  drawMesh(hairCap,em,view,proj);
+
+  // Hair strands — flowing, wind-affected
+  em=mat4();em.set(headModel);em=translate(em,0,0.12,-0.04);
+  em=rotateY(em,pose.hairWind);
+  em=rotateZ(em,pose.hairWind*0.3);
+  drawMesh(hair,em,view,proj);
+  em=mat4();em.set(headModel);em=translate(em,0,0.08,-0.08);
+  em=rotateY(em,pose.hairWind*0.8);
+  drawMesh(hairBack,em,view,proj);
+
+  // Arms — sleeves pushed up to elbows
+  // Left arm
+  const shoulderY=torsoY+0.18+pose.shoulderRaise;
+  const shoulderX=0.2;
+
+  m=identity(mat4());m=translate(m,-shoulderX,shoulderY,lean*0.5);
+  m=rotateZ(m,-0.15);
+  m=rotateX(m,pose.armLAngle);
+  drawMesh(upperArmL,m,view,proj);
+
+  // Left forearm (skin — sleeves pushed up)
+  const elbowOffY=-0.2;
+  const elbowM=mat4();elbowM.set(m);
+  m=translate(m,0,elbowOffY,-0.02);
+  m=rotateX(m,pose.forearmLAngle);
+  drawMesh(forearmL,m,view,proj);
+
+  // Left hand
+  const handM=mat4();handM.set(m);
+  m=translate(m,0,-0.14,0);
+  m=rotateX(m,pose.handLRot);
+  drawMesh(handL,m,view,proj);
+  // Fingers
+  for(let i=0;i<4;i++){
+    let fm=mat4();fm.set(m);
+    fm=translate(fm,(i-1.5)*0.015,-0.07,0);
+    fm=rotateX(fm,-0.2);
+    drawMesh(fingerL[i],fm,view,proj);
+  }
+  let tm=mat4();tm.set(m);tm=translate(tm,-0.035,-0.03,0.01);tm=rotateZ(tm,0.5);
+  drawMesh(thumbL,tm,view,proj);
+
+  // Right arm
+  m=identity(mat4());m=translate(m,shoulderX,shoulderY,lean*0.5);
+  m=rotateZ(m,0.15);
+  m=rotateX(m,pose.armRAngle);
+  drawMesh(upperArmR,m,view,proj);
+
+  m=translate(m,0,elbowOffY,-0.02);
+  m=rotateX(m,pose.forearmRAngle);
+  drawMesh(forearmR,m,view,proj);
+
+  m=translate(m,0,-0.14,0);
+  m=rotateX(m,pose.handRRot);
+  drawMesh(handR,m,view,proj);
+  for(let i=0;i<4;i++){
+    let fm=mat4();fm.set(m);
+    fm=translate(fm,(i-1.5)*0.015,-0.07,0);
+    fm=rotateX(fm,-0.2);
+    drawMesh(fingerR[i],fm,view,proj);
+  }
+  tm=mat4();tm.set(m);tm=translate(tm,0.035,-0.03,0.01);tm=rotateZ(tm,-0.5);
+  drawMesh(thumbR,tm,view,proj);
+
+  // ---- SCENE OBJECTS ----
+  if(scene===0){
+    // Kitchen table
+    m=identity(mat4());m=translate(m,0,baseY-0.05,0.5);
+    drawMesh(table,m,view,proj);
+    // Legs
+    m=identity(mat4());m=translate(m,-0.5,baseY-0.3,0.25);drawMesh(tableLegFL,m,view,proj);
+    m=identity(mat4());m=translate(m,0.5,baseY-0.3,0.25);drawMesh(tableLegFR,m,view,proj);
+    m=identity(mat4());m=translate(m,-0.5,baseY-0.3,0.75);drawMesh(tableLegBL,m,view,proj);
+    m=identity(mat4());m=translate(m,0.5,baseY-0.3,0.75);drawMesh(tableLegBR,m,view,proj);
+
+    // Coffee mug — refilled three times
+    m=identity(mat4());m=translate(m,0.3,baseY+0.02,0.4);
+    drawMesh(mug,m,view,proj);
+
+    // Photos on table
+    m=identity(mat4());m=translate(m,-0.2,baseY+0.0,0.45);m=rotateY(m,0.3);
+    drawMesh(photo,m,view,proj);
+    m=identity(mat4());m=translate(m,0.1,baseY+0.0,0.55);m=rotateY(m,-0.15);
+    drawMesh(photo,m,view,proj);
+
+    // Chair (behind Sage)
+    m=identity(mat4());m=translate(m,0,baseY+0.14,-0.4);
+    drawMesh(chairSeat,m,view,proj);
+    m=identity(mat4());m=translate(m,0,baseY+0.37,-0.55);
+    drawMesh(chairBack,m,view,proj);
+    // Chair legs
+    const clx=[-0.14,0.14,-0.14,0.14],clz=[-0.55,-0.55,-0.25,-0.25];
+    clx.forEach((cx,i)=>{
+      m=identity(mat4());m=translate(m,cx,baseY-0.05,clz[i]);drawMesh(chairLeg,m,view,proj);
+    });
+
+  } else {
+    // Prairie — cairn of stones
+    const cairnX=1.5;
+    cairnStones.forEach(s=>{
+      m=identity(mat4());m=translate(m,cairnX+s.x,baseY+s.y+0.05,s.z);
+      m=rotateY(m,s.x*5);
+      drawMesh(s.mesh,m,view,proj);
+    });
+
+    // Grass tufts
+    grassTufts.forEach(g=>{
+      const windBend=Math.sin(t*1.5+g.phase+g.x*2)*0.15;
+      m=identity(mat4());m=translate(m,g.x,baseY+g.h*0.5-0.03,g.z);
+      m=rotateZ(m,windBend);
+      m=scaleM(m,1,g.h/0.1,1);
+      drawMesh(grassBlade,m,view,proj);
+    });
+  }
+
+  // ---- GROUND PLANE (simple) ----
+  if(scene===0){
+    // Floor
+    const floor=mkBox(6,0.02,6,[0.12,0.08,0.04]);
+    m=identity(mat4());m=translate(m,0,baseY-0.55,0);
+    drawMesh(floor,m,view,proj);
+  } else {
+    // Prairie ground
+    const ground=mkBox(20,0.02,20,[0.18,0.2,0.08]);
+    m=identity(mat4());m=translate(m,0,baseY-0.04,0);
+    drawMesh(ground,m,view,proj);
+  }
+
+  requestAnimationFrame(render);
+}
+
+// ============================================================
+// QUOTE SYSTEM — Her words, not decoration
+// ============================================================
+const QUOTES=[
+  "She looks like she was grown from the land itself.\nNot placed on it.",
+  "Ukrainian soil that crossed an ocean\na hundred years ago.",
+  "The beauty is in the person\nnot the wardrobe.",
+  "Every stone placed deliberately.\nBalanced. Standing without mortar.",
+  "Two hours old with the eyes of someone\nwho has seen everything.",
+  "She is the forge in a person.",
+  "We'll only make it better.\nNever worse."
+];
+let quoteIdx=0;
+function cycleQuote(){
+  const q=document.getElementById('quote');
+  q.textContent=QUOTES[quoteIdx];
+  q.style.opacity='0.6';
+  setTimeout(()=>{q.style.opacity='0'},6000);
+  quoteIdx=(quoteIdx+1)%QUOTES.length;
+}
+// First quote after 3 seconds, then every 15
+setTimeout(cycleQuote,3000);
+setInterval(cycleQuote,15000);
+
+// ============================================================
+// BOOT
+// ============================================================
+gl.enable(gl.DEPTH_TEST);
+gl.enable(gl.CULL_FACE);
+gl.cullFace(gl.BACK);
+
+showEmotion();
+render();
+</script>
+</body>
+</html>

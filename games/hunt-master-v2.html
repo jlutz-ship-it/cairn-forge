@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>HUNT MASTER v2 — MT4GE</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#050510; overflow:hidden; font-family:'Courier New',monospace; color:#e0e8f0; }
+canvas { display:block; cursor:crosshair; }
+.overlay { position:fixed; top:0; left:0; width:100%; height:100%; display:flex;
+  flex-direction:column; align-items:center; justify-content:center; z-index:500;
+  background:rgba(5,5,16,0.92); }
+.overlay h1 { color:#33ff88; font-size:36px; margin-bottom:10px; text-shadow:0 0 20px rgba(51,255,136,0.5); }
+.overlay h2 { color:#8090a0; font-size:16px; margin-bottom:25px; font-weight:normal; }
+.overlay .btn { display:block; width:280px; padding:14px; margin:6px auto; background:rgba(51,255,136,0.1);
+  border:1px solid rgba(51,255,136,0.3); color:#33ff88; font-family:inherit; font-size:16px;
+  cursor:pointer; text-align:center; transition:all 0.15s; }
+.overlay .btn:hover { background:rgba(51,255,136,0.25); border-color:#33ff88; transform:scale(1.02); }
+.overlay .btn.disabled { opacity:0.3; pointer-events:none; }
+.overlay .info { color:#8090a0; font-size:12px; margin-top:15px; text-align:center; line-height:1.8; max-width:400px; }
+.overlay .price { color:#33ff88; }
+#toasts { position:fixed; top:80px; right:20px; z-index:600; }
+.toast { padding:10px 18px; margin-bottom:8px; border-radius:4px; font-size:13px;
+  animation:toastIn 0.3s ease; }
+.toast.success { background:rgba(51,255,136,0.15); border:1px solid rgba(51,255,136,0.3); color:#33ff88; }
+.toast.error { background:rgba(255,51,102,0.15); border:1px solid rgba(255,51,102,0.3); color:#ff3366; }
+.toast.info { background:rgba(0,229,255,0.15); border:1px solid rgba(0,229,255,0.3); color:#00e5ff; }
+.toast.warning { background:rgba(255,170,51,0.15); border:1px solid rgba(255,170,51,0.3); color:#ffaa33; }
+@keyframes toastIn { from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)} }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="toasts"></div>
+<script>
+(function(){
+"use strict";
+
+// ── Audio ───────────────────────────────────────────────────
+var audioCtx = null;
+function initAudio() {
+    if(audioCtx) return;
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+}
+function playTone(f,d,t,v) {
+    if(!audioCtx) return;
+    var o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type=t||"square"; o.frequency.value=f;
+    g.gain.setValueAtTime(v||0.1,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+d);
+    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+d);
+}
+function noise(d,v) {
+    if(!audioCtx) return;
+    var buf=audioCtx.createBuffer(1,audioCtx.sampleRate*d,audioCtx.sampleRate);
+    var data=buf.getChannelData(0);
+    for(var i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*(v||0.1);
+    var src=audioCtx.createBufferSource(); src.buffer=buf;
+    var g=audioCtx.createGain();
+    g.gain.setValueAtTime(v||0.1,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+d);
+    src.connect(g); g.connect(audioCtx.destination); src.start();
+}
+function sfxRifle() { noise(0.3,0.15); playTone(80,0.2,"sawtooth",0.12); }
+function sfxBow() { playTone(800,0.15,"sine",0.06); playTone(400,0.1,"triangle",0.04); }
+function sfxHit() { playTone(200,0.1,"square",0.1); noise(0.08,0.08); }
+function sfxKill() { playTone(523,0.1,"sine",0.1); setTimeout(function(){playTone(659,0.1,"sine",0.1);},100); setTimeout(function(){playTone(784,0.15,"sine",0.12);},200); }
+function sfxStep() { noise(0.06,0.03); }
+function sfxBuy() { playTone(600,0.08,"square",0.06); setTimeout(function(){playTone(800,0.12,"square",0.06);},80); }
+function sfxError() { playTone(200,0.15,"square",0.1); setTimeout(function(){playTone(150,0.2,"square",0.1);},120); }
+function sfxClick() { playTone(1000,0.05,"square",0.05); }
+function sfxAlert() { playTone(880,0.1,"square",0.08); setTimeout(function(){playTone(880,0.1,"square",0.08);},200); }
+function sfxBearGrowl() { playTone(80,0.4,"sawtooth",0.1); playTone(60,0.3,"sawtooth",0.08); }
+
+// ── Toast ───────────────────────────────────────────────────
+function toast(msg,type,dur) {
+    var el=document.createElement("div"); el.className="toast "+(type||"info"); el.textContent=msg;
+    document.getElementById("toasts").appendChild(el);
+    setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},dur||3000);
+}
+
+// ── Canvas ──────────────────────────────────────────────────
+var canvas=document.getElementById("game"), ctx=canvas.getContext("2d"), W, H;
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+window.addEventListener("resize",resize); resize();
+
+// ── Game State ──────────────────────────────────────────────
+var STATE={MENU:0,PLAYING:1,PAUSED:2,SHOP:3,TROPHIES:4,DEAD:5};
+var state=STATE.MENU;
+
+var game = {
+    money: 500,
+    licenses: { deer:true, elk:false, bear:false, turkey:true, rabbit:true },
+    licenseCosts: { elk:300, bear:500 },
+    trophies: [],
+    totalWeight: 0,
+    totalValue: 0,
+    huntsCompleted: 0,
+    timeOfDay: 8,
+    windDir: 0, windSpeed: 3,
+    temperature: 12,
+    season: "fall"
+};
+
+// Player
+var player = {
+    x:0, y:0, angle:0, speed:0,
+    health:100, maxHealth:100, stamina:100, maxStamina:100,
+    crouching:false, running:false,
+    noiseLevel:0, // 0-1, how loud
+    weapon:0 // 0=rifle, 1=bow
+};
+
+var weapons = [
+    { name:"Hunting Rifle", damage:80, range:350, fireRate:1.2, spread:0.02, ammo:5, maxAmmo:5, reserve:30,
+      reloadTime:2.5, lastFire:0, reloading:false, reloadStart:0, sound:sfxRifle, noise:0.9 },
+    { name:"Compound Bow", damage:50, range:80, fireRate:1.5, spread:0.01, ammo:12, maxAmmo:12, reserve:24,
+      reloadTime:0.3, lastFire:0, reloading:false, reloadStart:0, sound:sfxBow, noise:0.1 }
+];
+
+// Animal definitions
+var animalDefs = {
+    deer:   { name:"White-tail Deer", hp:80, speed:120, detectRange:160, fleeRange:250, weight:[80,150], value:[200,400], color:"#8B6914", size:8, aggressive:false },
+    elk:    { name:"Elk",             hp:150,speed:100, detectRange:200, fleeRange:300, weight:[300,500], value:[500,900], color:"#5C4033", size:12, aggressive:false },
+    bear:   { name:"Black Bear",      hp:200,speed:90,  detectRange:140, fleeRange:180, weight:[150,300], value:[400,700], color:"#2A1506", size:14, aggressive:true, damage:25, attackRange:30 },
+    rabbit: { name:"Rabbit",          hp:15, speed:180, detectRange:80,  fleeRange:120, weight:[2,5],     value:[10,30],   color:"#A08060", size:4, aggressive:false },
+    turkey: { name:"Wild Turkey",     hp:30, speed:70,  detectRange:100, fleeRange:150, weight:[5,12],    value:[30,60],   color:"#4A3728", size:6, aggressive:false }
+};
+
+// Animals in the field
+var animals = [];
+var projectiles = [];
+var particles = [];
+var bloodTrails = [];
+
+// Map
+var MAP_SIZE = 2000;
+var trees = [];
+var bushes = [];
+var rocks = [];
+
+// Camera
+var camX = 0, camY = 0;
+
+// ── Map Generation ──────────────────────────────────────────
+function generateMap() {
+    trees = []; bushes = []; rocks = [];
+    // Trees
+    for(var i=0;i<200;i++) {
+        trees.push({
+            x:(Math.random()-0.5)*MAP_SIZE, y:(Math.random()-0.5)*MAP_SIZE,
+            r:8+Math.random()*12, shade:0.3+Math.random()*0.4
+        });
+    }
+    // Bushes (provide cover)
+    for(var j=0;j<120;j++) {
+        bushes.push({
+            x:(Math.random()-0.5)*MAP_SIZE, y:(Math.random()-0.5)*MAP_SIZE,
+            r:4+Math.random()*6
+        });
+    }
+    // Rocks
+    for(var k=0;k<60;k++) {
+        rocks.push({
+            x:(Math.random()-0.5)*MAP_SIZE, y:(Math.random()-0.5)*MAP_SIZE,
+            r:3+Math.random()*8
+        });
+    }
+}
+
+function spawnAnimals() {
+    animals = [];
+    var spawns = [
+        {type:"deer",count:6},{type:"elk",count:3},{type:"bear",count:2},
+        {type:"rabbit",count:8},{type:"turkey",count:5}
+    ];
+    for(var s=0;s<spawns.length;s++) {
+        for(var i=0;i<spawns[s].count;i++) {
+            var angle=Math.random()*Math.PI*2;
+            var dist=100+Math.random()*800;
+            animals.push({
+                type:spawns[s].type,
+                x:Math.cos(angle)*dist, y:Math.sin(angle)*dist,
+                vx:0, vy:0, angle:Math.random()*Math.PI*2,
+                hp:animalDefs[spawns[s].type].hp,
+                state:"idle", // idle, patrol, alert, fleeing, attacking, dead
+                stateTimer:Math.random()*5,
+                alertLevel:0, // 0=unaware, 0-1=suspicious, 1=alert
+                waypointX:0, waypointY:0,
+                hitFlash:0, deadTimer:0
+            });
+        }
+    }
+}
+
+// ── Particles ───────────────────────────────────────────────
+function spawnParticles(x,y,color,count) {
+    for(var i=0;i<(count||5);i++) {
+        particles.push({
+            x:x,y:y,vx:(Math.random()-0.5)*3,vy:(Math.random()-0.5)*3,
+            life:1,color:color,size:1+Math.random()*2
+        });
+    }
+}
+
+// ── Overlays ────────────────────────────────────────────────
+var overlays = {};
+function createOverlay(id,html) {
+    var el=document.createElement("div"); el.className="overlay"; el.id="ov_"+id;
+    el.style.display="none"; el.innerHTML=html; document.body.appendChild(el);
+    overlays[id]=el; return el;
+}
+function showOverlay(id){if(overlays[id])overlays[id].style.display="flex";}
+function hideOverlay(id){if(overlays[id])overlays[id].style.display="none";}
+function hideAll(){for(var k in overlays)overlays[k].style.display="none";}
+
+createOverlay("menu",
+    '<h1>HUNT MASTER</h1><h2>Miskulin Technologies — MT4GE</h2>' +
+    '<div class="btn" id="btnHunt">START HUNT</div>' +
+    '<div class="btn" id="btnShop">LICENSE SHOP</div>' +
+    '<div class="btn" id="btnTrophies">TROPHY ROOM</div>' +
+    '<div class="btn" id="btnLoad">LOAD SAVE</div>' +
+    '<div class="info">WASD — Move | SHIFT — Sprint | CTRL — Crouch<br>' +
+    'Mouse — Aim | Click — Shoot | 1/2 — Switch weapon<br>' +
+    'R — Reload | E — Harvest animal | P/ESC — Pause<br>' +
+    'Wind affects detection. Crouching reduces noise.<br>Stay downwind of prey!</div>'
+);
+
+createOverlay("pause",
+    '<h1>PAUSED</h1>' +
+    '<div class="btn" id="btnResume">RESUME</div>' +
+    '<div class="btn" id="btnSave">SAVE GAME</div>' +
+    '<div class="btn" id="btnQuit">SAVE & QUIT</div>'
+);
+
+createOverlay("shop",'<h1>LICENSE SHOP</h1><div id="shopContent"></div><div class="btn" id="btnShopClose">BACK [ESC]</div>');
+createOverlay("trophies",'<h1>TROPHY ROOM</h1><div id="trophyContent" style="max-height:60vh;overflow-y:auto;padding:10px;"></div><div class="btn" id="btnTrophyClose">BACK [ESC]</div>');
+createOverlay("dead",'<h1 style="color:#ff3366;">MAULED!</h1><h2>A bear got you. Medivac rescue: -$200</h2><div class="btn" id="btnRespawn">CONTINUE HUNT</div>');
+
+// Wire buttons
+function wireBtn(id,fn){var el=document.getElementById(id);if(el)el.addEventListener("click",function(e){e.stopPropagation();fn();});}
+
+wireBtn("btnHunt",function(){
+    hideAll(); state=STATE.PLAYING;
+    player.x=0;player.y=0;player.health=100;player.stamina=100;
+    game.timeOfDay=8; game.windDir=Math.random()*Math.PI*2; game.windSpeed=2+Math.random()*5;
+    generateMap(); spawnAnimals(); sfxClick();
+    toast("Hunt started. Wind: "+game.windSpeed.toFixed(1)+" km/h","info",4000);
+});
+wireBtn("btnShop",function(){ openShop(); sfxClick(); });
+wireBtn("btnTrophies",function(){ openTrophies(); sfxClick(); });
+wireBtn("btnLoad",function(){ loadGame(); hideAll(); state=STATE.PLAYING; sfxClick(); });
+wireBtn("btnResume",function(){ hideAll(); state=STATE.PLAYING; sfxClick(); });
+wireBtn("btnSave",function(){ saveGame(); toast("Game saved!","success"); sfxClick(); });
+wireBtn("btnQuit",function(){ saveGame(); hideAll(); showOverlay("menu"); state=STATE.MENU; sfxClick(); });
+wireBtn("btnShopClose",function(){ hideAll(); showOverlay("menu"); state=STATE.MENU; sfxClick(); });
+wireBtn("btnTrophyClose",function(){ hideAll(); showOverlay("menu"); state=STATE.MENU; sfxClick(); });
+wireBtn("btnRespawn",function(){
+    hideAll(); state=STATE.PLAYING; player.health=100; player.x=0; player.y=0;
+    game.money=Math.max(0,game.money-200); sfxClick();
+});
+
+// ── Shop ────────────────────────────────────────────────────
+function openShop() {
+    state=STATE.SHOP;
+    var html='<div style="padding:10px;">';
+    html+='<div style="color:#8090a0;font-size:14px;margin-bottom:15px;">Money: <span class="price">$'+game.money+'</span></div>';
+
+    var licenseList = [
+        {id:"deer",name:"Deer License",cost:0,note:"Included"},
+        {id:"rabbit",name:"Rabbit License",cost:0,note:"Included"},
+        {id:"turkey",name:"Turkey License",cost:0,note:"Included"},
+        {id:"elk",name:"Elk License",cost:300,note:"Required for elk"},
+        {id:"bear",name:"Bear License",cost:500,note:"Required for bear"}
+    ];
+    for(var i=0;i<licenseList.length;i++) {
+        var l=licenseList[i];
+        if(game.licenses[l.id]) {
+            html+='<div class="btn disabled">'+l.name+' — <span style="color:#33ff88;">OWNED</span></div>';
+        } else {
+            html+='<div class="btn" onclick="window._buyLicense(\''+l.id+'\','+l.cost+')">'+l.name+' — <span class="price">$'+l.cost+'</span> ('+l.note+')</div>';
+        }
+    }
+
+    // Ammo
+    html+='<div style="color:#8090a0;font-size:13px;margin:15px 0 5px;">AMMO</div>';
+    html+='<div class="btn" onclick="window._buyAmmo(0)">Rifle Rounds x10 — <span class="price">$50</span></div>';
+    html+='<div class="btn" onclick="window._buyAmmo(1)">Arrows x12 — <span class="price">$30</span></div>';
+
+    html+='</div>';
+    document.getElementById("shopContent").innerHTML=html;
+    showOverlay("shop");
+}
+
+window._buyLicense=function(id,cost){
+    initAudio();
+    if(game.money>=cost){game.money-=cost;game.licenses[id]=true;sfxBuy();toast("License acquired: "+id,"success");openShop();}
+    else{sfxError();toast("Not enough money!","error");}
+};
+window._buyAmmo=function(idx){
+    initAudio();
+    var costs=[50,30], amounts=[10,12];
+    if(game.money>=costs[idx]){game.money-=costs[idx];weapons[idx].reserve+=amounts[idx];sfxBuy();toast("+"+amounts[idx]+" ammo","success");}
+    else{sfxError();toast("Not enough money!","error");}
+};
+
+// ── Trophies ────────────────────────────────────────────────
+function openTrophies() {
+    state=STATE.TROPHIES;
+    var html='';
+    if(game.trophies.length===0) {
+        html='<div style="color:#8090a0;text-align:center;padding:20px;">No trophies yet. Go hunt!</div>';
+    } else {
+        html+='<div style="color:#8090a0;font-size:13px;margin-bottom:10px;">Total: '+game.trophies.length+' animals, '+Math.round(game.totalWeight)+' lbs, $'+game.totalValue+'</div>';
+        for(var i=game.trophies.length-1;i>=0;i--) {
+            var t=game.trophies[i];
+            html+='<div style="color:#e0e8f0;font-size:13px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);">';
+            html+=t.name+' — '+t.weight+'lbs — $'+t.value+' ('+t.weapon+')';
+            html+='</div>';
+        }
+    }
+    document.getElementById("trophyContent").innerHTML=html;
+    showOverlay("trophies");
+}
+
+// ── Input ───────────────────────────────────────────────────
+var keys={};
+var mouse={x:W/2,y:H/2,down:false,clicked:false};
+
+document.addEventListener("keydown",function(e){
+    keys[e.key.toLowerCase()]=true; keys[e.code]=true; initAudio();
+    if(state===STATE.PLAYING){
+        if(e.key==="Escape"||e.key.toLowerCase()==="p"){state=STATE.PAUSED;showOverlay("pause");sfxClick();}
+        if(e.key==="1") player.weapon=0;
+        if(e.key==="2") player.weapon=1;
+        if(e.key.toLowerCase()==="r") reloadWeapon();
+        if(e.key.toLowerCase()==="e") harvestNearby();
+    } else if(state===STATE.PAUSED){
+        if(e.key==="Escape"||e.key.toLowerCase()==="p"){hideAll();state=STATE.PLAYING;sfxClick();}
+    } else if(state===STATE.SHOP||state===STATE.TROPHIES){
+        if(e.key==="Escape"){hideAll();showOverlay("menu");state=STATE.MENU;sfxClick();}
+    }
+});
+document.addEventListener("keyup",function(e){keys[e.key.toLowerCase()]=false;keys[e.code]=false;});
+canvas.addEventListener("mousemove",function(e){mouse.x=e.clientX;mouse.y=e.clientY;});
+canvas.addEventListener("mousedown",function(e){mouse.down=true;mouse.clicked=true;initAudio();});
+canvas.addEventListener("mouseup",function(e){mouse.down=false;});
+canvas.addEventListener("contextmenu",function(e){e.preventDefault();});
+
+// Touch
+canvas.addEventListener("touchstart",function(e){
+    e.preventDefault();initAudio();var t=e.touches[0];mouse.x=t.clientX;mouse.y=t.clientY;mouse.down=true;mouse.clicked=true;
+},{passive:false});
+canvas.addEventListener("touchmove",function(e){e.preventDefault();var t=e.touches[0];mouse.x=t.clientX;mouse.y=t.clientY;},{passive:false});
+canvas.addEventListener("touchend",function(e){mouse.down=false;});
+
+// ── Weapon Actions ──────────────────────────────────────────
+var gameTime = 0;
+
+function fireWeapon() {
+    var w = weapons[player.weapon];
+    if(w.reloading) return;
+    if(gameTime - w.lastFire < w.fireRate) return;
+    if(w.ammo <= 0) { reloadWeapon(); return; }
+
+    w.ammo--;
+    w.lastFire = gameTime;
+    w.sound();
+
+    // Noise alert
+    player.noiseLevel = Math.max(player.noiseLevel, w.noise);
+
+    // Spawn projectile toward mouse
+    var worldMX = mouse.x - W/2 + camX;
+    var worldMY = mouse.y - H/2 + camY;
+    var dx = worldMX - player.x;
+    var dy = worldMY - player.y;
+    var dist = Math.sqrt(dx*dx+dy*dy) || 1;
+    var spread = (Math.random()-0.5)*w.spread;
+    var angle = Math.atan2(dy,dx) + spread;
+
+    projectiles.push({
+        x:player.x, y:player.y,
+        vx:Math.cos(angle)*600, vy:Math.sin(angle)*600,
+        damage:w.damage, range:w.range, traveled:0, weapon:w.name
+    });
+}
+
+function reloadWeapon() {
+    var w = weapons[player.weapon];
+    if(w.reloading || w.ammo === w.maxAmmo) return;
+    if(w.reserve <= 0) { toast("No reserve ammo!","error"); return; }
+    w.reloading = true;
+    w.reloadStart = gameTime;
+}
+
+function harvestNearby() {
+    for(var i=0;i<animals.length;i++) {
+        var a=animals[i];
+        if(a.state!=="dead") continue;
+        var dx=a.x-player.x, dy=a.y-player.y;
+        if(Math.sqrt(dx*dx+dy*dy) > 40) continue;
+
+        // Check license
+        if(!game.licenses[a.type]) {
+            toast("No license for "+animalDefs[a.type].name+"! Poaching!","error",4000);
+            sfxError();
+            game.money = Math.max(0, game.money - 100);
+            toast("-$100 fine", "error");
+            animals.splice(i,1);
+            return;
+        }
+
+        var def = animalDefs[a.type];
+        var weight = Math.round(def.weight[0] + Math.random()*(def.weight[1]-def.weight[0]));
+        var value = Math.round(def.value[0] + Math.random()*(def.value[1]-def.value[0]));
+
+        game.trophies.push({ name:def.name, weight:weight, value:value, weapon:weapons[player.weapon].name });
+        game.totalWeight += weight;
+        game.totalValue += value;
+        game.money += value;
+        game.huntsCompleted++;
+
+        sfxKill();
+        toast(def.name+" harvested: "+weight+"lbs ($"+value+")","success",4000);
+        spawnParticles(a.x,a.y,"#33ff88",10);
+        animals.splice(i,1);
+        return;
+    }
+    toast("No dead animals nearby. Get closer!","info");
+}
+
+// ── Animal AI ───────────────────────────────────────────────
+function updateAnimalAI(a, dt) {
+    var def = animalDefs[a.type];
+    if(a.state === "dead") { a.deadTimer += dt; return; }
+
+    // Detection: based on distance, noise, wind
+    var dx = player.x - a.x;
+    var dy = player.y - a.y;
+    var dist = Math.sqrt(dx*dx+dy*dy);
+
+    // Wind factor: if player is upwind of animal, detection range increases
+    var angleToPlayer = Math.atan2(dy,dx);
+    var windAngle = game.windDir;
+    var windFactor = Math.cos(angleToPlayer - windAngle); // 1 = upwind, -1 = downwind
+    var effectiveDetect = def.detectRange * (1 + windFactor * 0.5);
+
+    // Noise factor
+    var noiseMult = 1 + player.noiseLevel * 2;
+
+    // Detection
+    if(dist < effectiveDetect * noiseMult) {
+        a.alertLevel = Math.min(1, a.alertLevel + dt * (player.crouching ? 0.3 : 0.8));
+    } else {
+        a.alertLevel = Math.max(0, a.alertLevel - dt * 0.2);
+    }
+
+    a.stateTimer -= dt;
+
+    switch(a.state) {
+        case "idle":
+            a.vx *= 0.9; a.vy *= 0.9;
+            if(a.alertLevel > 0.7) {
+                if(def.aggressive && dist < (def.attackRange || 40)) {
+                    a.state = "attacking"; sfxBearGrowl();
+                } else {
+                    a.state = "fleeing"; sfxAlert();
+                    toast(def.name+" spooked!","warning");
+                }
+            } else if(a.alertLevel > 0.3) {
+                a.state = "alert"; a.stateTimer = 3;
+            } else if(a.stateTimer <= 0) {
+                a.state = "patrol";
+                a.waypointX = a.x + (Math.random()-0.5)*200;
+                a.waypointY = a.y + (Math.random()-0.5)*200;
+                a.stateTimer = 3 + Math.random()*5;
+            }
+            break;
+
+        case "patrol":
+            var wpDx = a.waypointX - a.x;
+            var wpDy = a.waypointY - a.y;
+            var wpDist = Math.sqrt(wpDx*wpDx+wpDy*wpDy);
+            if(wpDist > 5) {
+                a.vx = (wpDx/wpDist) * def.speed * 0.3;
+                a.vy = (wpDy/wpDist) * def.speed * 0.3;
+                a.angle = Math.atan2(wpDy,wpDx);
+            }
+            if(wpDist < 10 || a.stateTimer <= 0) { a.state = "idle"; a.stateTimer = 2+Math.random()*4; }
+            if(a.alertLevel > 0.5) {
+                a.state = def.aggressive && dist<(def.attackRange||40)*2 ? "attacking" : "fleeing";
+                if(a.state==="attacking") sfxBearGrowl();
+            }
+            break;
+
+        case "alert":
+            a.vx *= 0.85; a.vy *= 0.85;
+            a.angle = Math.atan2(dy,dx); // face player
+            if(a.alertLevel > 0.8) {
+                a.state = def.aggressive && dist<(def.attackRange||40)*2 ? "attacking" : "fleeing";
+                if(a.state==="attacking") sfxBearGrowl();
+            }
+            if(a.alertLevel < 0.1) { a.state="idle"; a.stateTimer=3; }
+            break;
+
+        case "fleeing":
+            var fleeAngle = Math.atan2(a.y-player.y, a.x-player.x);
+            a.vx = Math.cos(fleeAngle) * def.speed;
+            a.vy = Math.sin(fleeAngle) * def.speed;
+            a.angle = fleeAngle;
+            if(dist > def.fleeRange) { a.state="idle"; a.stateTimer=5; a.alertLevel=0.2; }
+            break;
+
+        case "attacking":
+            if(!def.aggressive) { a.state="fleeing"; break; }
+            var atkAngle = Math.atan2(dy,dx);
+            a.vx = Math.cos(atkAngle) * def.speed * 1.2;
+            a.vy = Math.sin(atkAngle) * def.speed * 1.2;
+            a.angle = atkAngle;
+            if(dist < 25) {
+                if(a.stateTimer <= 0) {
+                    player.health -= def.damage;
+                    a.stateTimer = 1;
+                    sfxHit();
+                    spawnParticles(player.x,player.y,"#ff3366",6);
+                    toast("Bear attack! -"+def.damage+" HP","error");
+                    if(player.health<=0) {
+                        player.health=0; state=STATE.DEAD; showOverlay("dead");
+                    }
+                }
+            }
+            if(dist > (def.attackRange||40)*3) { a.state="idle"; a.stateTimer=3; }
+            break;
+    }
+
+    // Move
+    a.x += a.vx * dt;
+    a.y += a.vy * dt;
+
+    // Clamp to map
+    a.x = Math.max(-MAP_SIZE/2, Math.min(MAP_SIZE/2, a.x));
+    a.y = Math.max(-MAP_SIZE/2, Math.min(MAP_SIZE/2, a.y));
+
+    // Hit flash
+    if(a.hitFlash > 0) a.hitFlash -= dt * 3;
+}
+
+// ── Update ──────────────────────────────────────────────────
+function update(dt) {
+    gameTime += dt;
+
+    // Time of day
+    game.timeOfDay += dt * 0.01;
+    if(game.timeOfDay >= 24) game.timeOfDay -= 24;
+
+    // Wind drift
+    game.windDir += (Math.random()-0.5) * dt * 0.1;
+    game.windSpeed = 2 + Math.sin(game.timeOfDay*0.5)*3;
+
+    // Player movement
+    var moveX=0, moveY=0;
+    if(keys["w"]||keys["arrowup"]) moveY=-1;
+    if(keys["s"]||keys["arrowdown"]) moveY=1;
+    if(keys["a"]||keys["arrowleft"]) moveX=-1;
+    if(keys["d"]||keys["arrowright"]) moveX=1;
+
+    player.crouching = !!keys["control"];
+    player.running = !!(keys["shift"]) && !player.crouching && player.stamina > 0;
+
+    var spd = player.crouching ? 60 : player.running ? 180 : 100;
+    if(moveX || moveY) {
+        var len = Math.sqrt(moveX*moveX+moveY*moveY);
+        player.x += (moveX/len)*spd*dt;
+        player.y += (moveY/len)*spd*dt;
+        player.noiseLevel = player.crouching ? 0.05 : player.running ? 0.6 : 0.2;
+
+        // Stamina
+        if(player.running) player.stamina = Math.max(0, player.stamina - dt*20);
+        // Step sounds
+        if(Math.random() < dt * (player.running ? 8 : 3)) sfxStep();
+    } else {
+        player.noiseLevel = Math.max(0, player.noiseLevel - dt*2);
+    }
+
+    // Stamina regen
+    if(!player.running) player.stamina = Math.min(player.maxStamina, player.stamina + dt*10);
+
+    // Aim angle
+    var worldMX = mouse.x - W/2 + camX;
+    var worldMY = mouse.y - H/2 + camY;
+    player.angle = Math.atan2(worldMY - player.y, worldMX - player.x);
+
+    // Clamp player
+    player.x = Math.max(-MAP_SIZE/2, Math.min(MAP_SIZE/2, player.x));
+    player.y = Math.max(-MAP_SIZE/2, Math.min(MAP_SIZE/2, player.y));
+
+    // Fire
+    if(mouse.clicked && state===STATE.PLAYING) { fireWeapon(); mouse.clicked=false; }
+
+    // Reload check
+    var w = weapons[player.weapon];
+    if(w.reloading && gameTime - w.reloadStart >= w.reloadTime) {
+        var needed = w.maxAmmo - w.ammo;
+        var give = Math.min(needed, w.reserve);
+        w.ammo += give; w.reserve -= give;
+        w.reloading = false;
+    }
+
+    // Projectiles
+    for(var p=projectiles.length-1;p>=0;p--) {
+        var proj=projectiles[p];
+        proj.x += proj.vx*dt; proj.y += proj.vy*dt;
+        proj.traveled += Math.sqrt(proj.vx*proj.vx+proj.vy*proj.vy)*dt;
+        if(proj.traveled > proj.range) { projectiles.splice(p,1); continue; }
+
+        // Hit animals
+        var hit = false;
+        for(var ai=0;ai<animals.length;ai++) {
+            var an=animals[ai];
+            if(an.state==="dead") continue;
+            var adx=proj.x-an.x, ady=proj.y-an.y;
+            var adist=Math.sqrt(adx*adx+ady*ady);
+            if(adist < animalDefs[an.type].size+2) {
+                an.hp -= proj.damage;
+                an.hitFlash = 1;
+                an.alertLevel = 1;
+                sfxHit();
+                spawnParticles(an.x,an.y,"#cc0000",5);
+                bloodTrails.push({x:an.x,y:an.y,life:15});
+
+                if(an.hp <= 0) {
+                    an.state="dead"; an.vx=0; an.vy=0;
+                    toast(animalDefs[an.type].name+" down! Press E to harvest.","success",4000);
+                } else {
+                    // Wounded — flee harder
+                    an.state="fleeing";
+                    toast(animalDefs[an.type].name+" hit! ("+an.hp+" HP left)","warning");
+                }
+                hit=true; break;
+            }
+        }
+        if(hit) projectiles.splice(p,1);
+    }
+
+    // Alert nearby animals to gunshots
+    if(player.noiseLevel > 0.5) {
+        for(var na=0;na<animals.length;na++) {
+            var nad=Math.sqrt(Math.pow(animals[na].x-player.x,2)+Math.pow(animals[na].y-player.y,2));
+            if(nad < 300 * player.noiseLevel) {
+                animals[na].alertLevel = Math.min(1, animals[na].alertLevel + 0.3);
+            }
+        }
+    }
+
+    // Animal AI
+    for(var j=0;j<animals.length;j++) updateAnimalAI(animals[j],dt);
+
+    // Particles
+    for(var k=particles.length-1;k>=0;k--) {
+        particles[k].x+=particles[k].vx; particles[k].y+=particles[k].vy;
+        particles[k].life-=dt*2;
+        if(particles[k].life<=0) particles.splice(k,1);
+    }
+
+    // Blood trails fade
+    for(var b=bloodTrails.length-1;b>=0;b--) {
+        bloodTrails[b].life-=dt;
+        if(bloodTrails[b].life<=0) bloodTrails.splice(b,1);
+    }
+
+    // Noise decay
+    player.noiseLevel = Math.max(0, player.noiseLevel - dt*0.5);
+
+    // Camera follow
+    camX += (player.x - camX) * 5 * dt;
+    camY += (player.y - camY) * 5 * dt;
+}
+
+// ── Render ──────────────────────────────────────────────────
+function render() {
+    // Sky based on time
+    var t = game.timeOfDay;
+    var skyR,skyG,skyB;
+    if(t<6){skyR=5;skyG=10;skyB=25;} else if(t<8){skyR=20;skyG=30;skyB=40;} else if(t<18){skyR=25;skyG=45;skyB=35;} else if(t<20){skyR=30;skyG=20;skyB=25;} else{skyR=5;skyG=10;skyB=25;}
+    ctx.fillStyle="rgb("+skyR+","+skyG+","+skyB+")";
+    ctx.fillRect(0,0,W,H);
+
+    var offX = W/2 - camX;
+    var offY = H/2 - camY;
+
+    // Ground grid
+    ctx.strokeStyle="rgba(50,80,40,0.15)";
+    ctx.lineWidth=1;
+    var gridStep=80;
+    var startGX=Math.floor((camX-W/2)/gridStep)*gridStep;
+    var startGY=Math.floor((camY-H/2)/gridStep)*gridStep;
+    for(var gx=startGX;gx<camX+W/2;gx+=gridStep){
+        ctx.beginPath();ctx.moveTo(gx+offX,0);ctx.lineTo(gx+offX,H);ctx.stroke();
+    }
+    for(var gy=startGY;gy<camY+H/2;gy+=gridStep){
+        ctx.beginPath();ctx.moveTo(0,gy+offY);ctx.lineTo(W,gy+offY);ctx.stroke();
+    }
+
+    // Blood trails
+    for(var b=0;b<bloodTrails.length;b++) {
+        var bt=bloodTrails[b];
+        ctx.globalAlpha=Math.min(1,bt.life/5)*0.4;
+        ctx.fillStyle="#660000";
+        ctx.beginPath();ctx.arc(bt.x+offX,bt.y+offY,3,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+
+    // Trees
+    for(var ti=0;ti<trees.length;ti++) {
+        var tr=trees[ti];
+        var sx=tr.x+offX, sy=tr.y+offY;
+        if(sx<-30||sx>W+30||sy<-30||sy>H+30) continue;
+        ctx.fillStyle="rgba(20,50,15,"+tr.shade+")";
+        ctx.beginPath();ctx.arc(sx,sy,tr.r,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle="#3a2510";
+        ctx.fillRect(sx-2,sy-2,4,4);
+    }
+
+    // Bushes
+    for(var bi=0;bi<bushes.length;bi++) {
+        var bu=bushes[bi];
+        var bsx=bu.x+offX, bsy=bu.y+offY;
+        if(bsx<-20||bsx>W+20||bsy<-20||bsy>H+20) continue;
+        ctx.fillStyle="rgba(30,70,25,0.5)";
+        ctx.beginPath();ctx.arc(bsx,bsy,bu.r,0,Math.PI*2);ctx.fill();
+    }
+
+    // Rocks
+    for(var ri=0;ri<rocks.length;ri++) {
+        var ro=rocks[ri];
+        var rsx=ro.x+offX, rsy=ro.y+offY;
+        if(rsx<-20||rsx>W+20||rsy<-20||rsy>H+20) continue;
+        ctx.fillStyle="rgba(80,80,90,0.6)";
+        ctx.beginPath();ctx.arc(rsx,rsy,ro.r,0,Math.PI*2);ctx.fill();
+    }
+
+    // Animals
+    for(var ai=0;ai<animals.length;ai++) {
+        var a=animals[ai];
+        var ax=a.x+offX, ay=a.y+offY;
+        if(ax<-30||ax>W+30||ay<-30||ay>H+30) continue;
+
+        var def=animalDefs[a.type];
+        var sz=def.size;
+
+        if(a.state==="dead") {
+            ctx.globalAlpha=Math.max(0.3,1-a.deadTimer*0.1);
+            ctx.fillStyle="#555";
+        } else {
+            ctx.globalAlpha=1;
+            ctx.fillStyle=a.hitFlash>0?"#ff4444":def.color;
+        }
+
+        // Body
+        ctx.save();
+        ctx.translate(ax,ay);
+        ctx.rotate(a.angle);
+        ctx.beginPath();
+        ctx.ellipse(0,0,sz,sz*0.6,0,0,Math.PI*2);
+        ctx.fill();
+
+        // Head
+        if(a.state!=="dead") {
+            ctx.fillStyle=def.color;
+            ctx.beginPath();ctx.arc(sz*0.7,0,sz*0.35,0,Math.PI*2);ctx.fill();
+            // Eye
+            ctx.fillStyle="#fff";
+            ctx.beginPath();ctx.arc(sz*0.85,sz*-0.1,1.5,0,Math.PI*2);ctx.fill();
+        }
+        ctx.restore();
+        ctx.globalAlpha=1;
+
+        // Alert indicator
+        if(a.alertLevel>0.1 && a.state!=="dead") {
+            var alertColor = a.alertLevel > 0.7 ? "#ff3366" : a.alertLevel > 0.3 ? "#ffaa33" : "#8090a0";
+            ctx.fillStyle=alertColor;
+            ctx.font="bold 12px monospace";
+            ctx.textAlign="center";
+            ctx.fillText(a.alertLevel>0.7?"!":"?",ax,ay-sz-8);
+        }
+
+        // HP bar for damaged animals
+        if(a.hp < animalDefs[a.type].hp && a.state!=="dead") {
+            var bw=sz*2, bh=3;
+            ctx.fillStyle="rgba(0,0,0,0.5)";
+            ctx.fillRect(ax-bw/2,ay-sz-5,bw,bh);
+            ctx.fillStyle="#ff3366";
+            ctx.fillRect(ax-bw/2,ay-sz-5,bw*(a.hp/animalDefs[a.type].hp),bh);
+        }
+    }
+
+    // Projectiles
+    ctx.fillStyle="#ffcc00";
+    for(var pi=0;pi<projectiles.length;pi++) {
+        var pr=projectiles[pi];
+        ctx.beginPath();ctx.arc(pr.x+offX,pr.y+offY,2,0,Math.PI*2);ctx.fill();
+    }
+
+    // Particles
+    for(var pk=0;pk<particles.length;pk++) {
+        var pp=particles[pk];
+        ctx.globalAlpha=pp.life;
+        ctx.fillStyle=pp.color;
+        ctx.fillRect(pp.x+offX-pp.size/2,pp.y+offY-pp.size/2,pp.size,pp.size);
+    }
+    ctx.globalAlpha=1;
+
+    // Player
+    ctx.save();
+    ctx.translate(W/2,H/2);
+    ctx.rotate(player.angle);
+
+    // Body
+    ctx.fillStyle=player.crouching?"#2a5a2a":"#3a7a3a";
+    ctx.beginPath();ctx.arc(0,0,player.crouching?7:9,0,Math.PI*2);ctx.fill();
+
+    // Weapon
+    ctx.fillStyle="#666";
+    ctx.fillRect(8,-2,player.weapon===0?16:12,4);
+
+    // Direction indicator
+    ctx.fillStyle="#33ff88";
+    ctx.beginPath();ctx.arc(12,0,2,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+
+    // Noise ring
+    if(player.noiseLevel > 0.05) {
+        ctx.strokeStyle="rgba(255,100,100,"+(player.noiseLevel*0.3)+")";
+        ctx.lineWidth=1;
+        ctx.beginPath();ctx.arc(W/2,H/2,30+player.noiseLevel*80,0,Math.PI*2);ctx.stroke();
+    }
+
+    // ── HUD ─────────────────────────────────────────────────
+    drawHUD();
+}
+
+function drawHUD() {
+    var barH=50;
+    ctx.fillStyle="rgba(10,15,25,0.9)";
+    ctx.fillRect(0,H-barH,W,barH);
+    ctx.strokeStyle="rgba(51,255,136,0.3)";
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(0,H-barH);ctx.lineTo(W,H-barH);ctx.stroke();
+
+    // Health
+    var hpW=120;
+    ctx.fillStyle="rgba(255,255,255,0.1)";ctx.fillRect(15,H-barH+10,hpW,12);
+    ctx.fillStyle=player.health>30?"#33ff88":"#ff3366";
+    ctx.fillRect(15,H-barH+10,hpW*(player.health/player.maxHealth),12);
+    ctx.fillStyle="#e0e8f0";ctx.font="10px monospace";ctx.textAlign="left";
+    ctx.fillText("HP:"+Math.round(player.health),15,H-barH+38);
+
+    // Stamina
+    ctx.fillStyle="rgba(255,255,255,0.1)";ctx.fillRect(15,H-barH+26,hpW,6);
+    ctx.fillStyle="#00aaff";
+    ctx.fillRect(15,H-barH+26,hpW*(player.stamina/player.maxStamina),6);
+
+    // Weapon & ammo
+    var w=weapons[player.weapon];
+    ctx.fillStyle="#33ff88";ctx.font="14px monospace";ctx.textAlign="right";
+    ctx.fillText(w.name,W-15,H-barH+18);
+    ctx.fillStyle=w.ammo>0?"#e0e8f0":"#ff3366";
+    ctx.fillText(w.ammo+"/"+w.maxAmmo+" ["+w.reserve+"]",W-15,H-barH+36);
+    if(w.reloading) {
+        var rPct=(gameTime-w.reloadStart)/w.reloadTime;
+        ctx.fillStyle="#ffaa33";ctx.fillText("RELOADING "+Math.round(rPct*100)+"%",W-15,H-barH+48);
+    }
+
+    // Money
+    ctx.fillStyle="#ffaa33";ctx.font="bold 16px monospace";ctx.textAlign="center";
+    ctx.fillText("$"+game.money,W/2,H-barH+20);
+
+    // Harvest count
+    ctx.fillStyle="#8090a0";ctx.font="11px monospace";
+    ctx.fillText("Harvested: "+game.huntsCompleted+" | "+Math.round(game.totalWeight)+" lbs",W/2,H-barH+38);
+
+    // Top bar
+    ctx.fillStyle="rgba(10,15,25,0.85)";ctx.fillRect(0,0,W,45);
+    ctx.strokeStyle="rgba(51,255,136,0.2)";ctx.beginPath();ctx.moveTo(0,45);ctx.lineTo(W,45);ctx.stroke();
+
+    // Time
+    var hr=Math.floor(game.timeOfDay), mn=Math.floor((game.timeOfDay%1)*60);
+    ctx.fillStyle="#e0e8f0";ctx.font="14px monospace";ctx.textAlign="left";
+    ctx.fillText((hr<10?"0":"")+hr+":"+(mn<10?"0":"")+mn,15,18);
+
+    // Wind compass
+    ctx.fillStyle="#8090a0";ctx.font="11px monospace";
+    ctx.fillText("Wind: "+game.windSpeed.toFixed(1)+" km/h",15,35);
+    // Wind arrow
+    var wax=130, way=22;
+    ctx.strokeStyle="#33ff88";ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(wax,way);
+    ctx.lineTo(wax+Math.cos(game.windDir)*15, way+Math.sin(game.windDir)*15);
+    ctx.stroke();
+    // Arrow head
+    var whAngle=game.windDir;
+    ctx.beginPath();
+    ctx.moveTo(wax+Math.cos(whAngle)*15, way+Math.sin(whAngle)*15);
+    ctx.lineTo(wax+Math.cos(whAngle-0.4)*10, way+Math.sin(whAngle-0.4)*10);
+    ctx.moveTo(wax+Math.cos(whAngle)*15, way+Math.sin(whAngle)*15);
+    ctx.lineTo(wax+Math.cos(whAngle+0.4)*10, way+Math.sin(whAngle+0.4)*10);
+    ctx.stroke();
+
+    // Crouch/sprint indicator
+    ctx.textAlign="right";
+    if(player.crouching) { ctx.fillStyle="#33ff88"; ctx.fillText("[CROUCHING — Low Noise]",W-15,18); }
+    else if(player.running) { ctx.fillStyle="#ff3366"; ctx.fillText("[SPRINTING — High Noise]",W-15,18); }
+
+    // Weapon switch hint
+    ctx.fillStyle="rgba(255,255,255,0.3)";ctx.font="10px monospace";
+    ctx.fillText("[1] Rifle  [2] Bow  [R] Reload  [E] Harvest",W-15,35);
+
+    // Minimap
+    var mmSize=100, mmX=W-mmSize-10, mmY=50;
+    ctx.fillStyle="rgba(10,15,25,0.8)";
+    ctx.fillRect(mmX,mmY,mmSize,mmSize);
+    ctx.strokeStyle="rgba(51,255,136,0.3)";
+    ctx.strokeRect(mmX,mmY,mmSize,mmSize);
+
+    var mmScale=mmSize/MAP_SIZE;
+    // Animals on minimap
+    for(var ai=0;ai<animals.length;ai++) {
+        var a=animals[ai];
+        if(a.state==="dead") continue;
+        var amx=mmX+mmSize/2+(a.x*mmScale);
+        var amy=mmY+mmSize/2+(a.y*mmScale);
+        ctx.fillStyle=a.alertLevel>0.5?"#ff3366":animalDefs[a.type].color;
+        ctx.fillRect(amx-1,amy-1,2,2);
+    }
+    // Player on minimap
+    ctx.fillStyle="#33ff88";
+    var pmx=mmX+mmSize/2+(player.x*mmScale);
+    var pmy=mmY+mmSize/2+(player.y*mmScale);
+    ctx.fillRect(pmx-2,pmy-2,4,4);
+
+    // Crosshair
+    ctx.strokeStyle="rgba(51,255,136,0.6)";ctx.lineWidth=1;
+    var cx=mouse.x, cy=mouse.y, gap=player.crouching?3:6, sz=player.crouching?6:10;
+    ctx.beginPath();
+    ctx.moveTo(cx-gap-sz,cy);ctx.lineTo(cx-gap,cy);
+    ctx.moveTo(cx+gap,cy);ctx.lineTo(cx+gap+sz,cy);
+    ctx.moveTo(cx,cy-gap-sz);ctx.lineTo(cx,cy-gap);
+    ctx.moveTo(cx,cy+gap);ctx.lineTo(cx,cy+gap+sz);
+    ctx.stroke();
+    ctx.fillStyle="#33ff88";
+    ctx.beginPath();ctx.arc(cx,cy,1,0,Math.PI*2);ctx.fill();
+}
+
+// ── Save/Load ───────────────────────────────────────────────
+function saveGame(){
+    try{localStorage.setItem("hm2_save",JSON.stringify({
+        money:game.money,licenses:game.licenses,trophies:game.trophies,
+        totalWeight:game.totalWeight,totalValue:game.totalValue,huntsCompleted:game.huntsCompleted,
+        weaponReserve0:weapons[0].reserve,weaponReserve1:weapons[1].reserve
+    }));}catch(e){}
+}
+function loadGame(){
+    try{var d=JSON.parse(localStorage.getItem("hm2_save"));
+    if(d){
+        game.money=d.money;game.licenses=d.licenses;game.trophies=d.trophies||[];
+        game.totalWeight=d.totalWeight||0;game.totalValue=d.totalValue||0;
+        game.huntsCompleted=d.huntsCompleted||0;
+        weapons[0].reserve=d.weaponReserve0||30;weapons[1].reserve=d.weaponReserve1||24;
+        generateMap();spawnAnimals();
+        toast("Save loaded!","success");
+    } else toast("No save found","warning");
+    }catch(e){toast("Load failed","error");}
+}
+
+// ── Game Loop ───────────────────────────────────────────────
+var lastTime=0;
+function gameLoop(ts) {
+    var dt=Math.min(0.05,(ts-lastTime)/1000); lastTime=ts;
+    if(state===STATE.PLAYING) update(dt);
+    if(state===STATE.PLAYING||state===STATE.PAUSED||state===STATE.DEAD) render();
+    else {
+        ctx.fillStyle="#050510";ctx.fillRect(0,0,W,H);
+    }
+    requestAnimationFrame(gameLoop);
+}
+
+// ── Boot ────────────────────────────────────────────────────
+showOverlay("menu");
+if(localStorage.getItem("hm2_save")) document.getElementById("btnLoad").style.display="block";
+else document.getElementById("btnLoad").style.display="none";
+state=STATE.MENU;
+requestAnimationFrame(gameLoop);
+
+})();
+</script>
+</body>
+</html>

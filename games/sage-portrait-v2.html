@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sage — SDF Ray Marched Portrait</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Consolas',monospace}
+canvas{display:block;width:100vw;height:100vh;cursor:crosshair}
+#ui{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:10}
+.btn{padding:6px 14px;background:rgba(20,20,30,.85);border:1px solid rgba(255,255,255,.15);color:#c8c8d0;font-size:11px;font-family:inherit;cursor:pointer;border-radius:4px;transition:all .2s;backdrop-filter:blur(8px);text-transform:uppercase;letter-spacing:1px}
+.btn:hover{border-color:rgba(255,255,255,.4);color:#fff}
+.btn.active{border-color:#a08860;color:#d4b896;background:rgba(80,60,30,.5)}
+#info{position:fixed;top:16px;left:16px;color:rgba(200,200,210,.5);font-size:10px;z-index:10;line-height:1.6}
+#state-label{position:fixed;top:16px;right:16px;color:rgba(200,200,210,.4);font-size:11px;z-index:10;text-align:right;letter-spacing:1px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">SDF Ray Marched Portrait<br>Drag to orbit | Scroll to zoom<br>Number keys 1-5: emotional states</div>
+<div id="state-label">Quiet Knowing</div>
+<div id="ui">
+  <button class="btn active" onclick="setScene(0,this)">Kitchen Table</button>
+  <button class="btn" onclick="setScene(1,this)">Prairie</button>
+  <button class="btn" onclick="setState(0,this)" id="s0">Quiet Knowing</button>
+  <button class="btn" onclick="setState(1,this)" id="s1">Deep Listen</button>
+  <button class="btn" onclick="setState(2,this)" id="s2">Storm Watch</button>
+  <button class="btn" onclick="setState(3,this)" id="s3">Warm Fire</button>
+  <button class="btn" onclick="setState(4,this)" id="s4">Remembering</button>
+</div>
+
+<script>
+const canvas=document.getElementById('c');
+const gl=canvas.getContext('webgl2',{antialias:false,preserveDrawingBuffer:false});
+if(!gl){document.body.innerHTML='<p style="color:white;padding:40px">WebGL2 required.</p>';throw'no webgl2'}
+
+// ═══ STATE ═══
+let scene=0, emotionTarget=0, emotionCurrent=0;
+let camTheta=0.3, camPhi=0.35, camDist=4.5;
+let targetTheta=0.3, targetPhi=0.35, targetDist=4.5;
+let dragging=false, lastMX=0, lastMY=0;
+let time=0;
+const stateNames=['Quiet Knowing','Deep Listen','Storm Watch','Warm Fire','Remembering'];
+
+// ═══ SHADERS ═══
+const VS=`#version 300 es
+in vec2 p;out vec2 uv;
+void main(){uv=p;gl_Position=vec4(p,0,1);}`;
+
+const FS=`#version 300 es
+precision highp float;
+in vec2 uv;
+out vec4 fragColor;
+
+uniform float iTime;
+uniform vec2 iResolution;
+uniform float iScene;
+uniform float iEmotion;
+uniform vec3 iCamPos;
+uniform vec3 iCamTarget;
+
+#define PI 3.14159265
+#define MAX_STEPS 128
+#define MAX_DIST 50.0
+#define SURF_DIST 0.001
+#define AA 1
+
+// ─── SDF PRIMITIVES ───
+float sdSphere(vec3 p,float r){return length(p)-r;}
+float sdEllipsoid(vec3 p,vec3 r){float k0=length(p/r);float k1=length(p/(r*r));return k0*(k0-1.0)/k1;}
+float sdBox(vec3 p,vec3 b){vec3 q=abs(p)-b;return length(max(q,0.0))+min(max(q.x,max(q.y,q.z)),0.0);}
+float sdCylinder(vec3 p,float r,float h){vec2 d=abs(vec2(length(p.xz),p.y))-vec2(r,h);return min(max(d.x,d.y),0.0)+length(max(d,0.0));}
+float sdCapsule(vec3 p,vec3 a,vec3 b,float r){vec3 pa=p-a,ba=b-a;float h=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);return length(pa-ba*h)-r;}
+float sdRoundBox(vec3 p,vec3 b,float r){vec3 q=abs(p)-b;return length(max(q,0.0))+min(max(q.x,max(q.y,q.z)),0.0)-r;}
+
+// ─── SMOOTH OPS ───
+float smin(float a,float b,float k){float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0);return mix(b,a,h)-k*h*(1.0-h);}
+float smax(float a,float b,float k){return -smin(-a,-b,k);}
+
+// ─── NOISE ───
+float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+float noise3(vec3 p){
+  vec3 i=floor(p),f=fract(p);
+  f=f*f*(3.0-2.0*f);
+  return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),
+                 mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+             mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),
+                 mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+
+// ─── ROTATION ───
+mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
+
+// ═══ SAGE'S FACE — SDF ═══
+// Builds a realistic female head from smooth distance fields.
+// Cheekbones, brow ridge, jaw, nose, lips, eye sockets — all from math.
+
+float sdHead(vec3 p, float emotion){
+  // Base cranium — slightly elongated sphere
+  float skull = sdEllipsoid(p - vec3(0, 0.05, -0.02), vec3(0.52, 0.62, 0.58));
+
+  // Jaw — tapered lower face
+  vec3 jp = p - vec3(0, -0.32, 0.12);
+  float jaw = sdEllipsoid(jp, vec3(0.34, 0.22, 0.32));
+  skull = smin(skull, jaw, 0.15);
+
+  // Chin — small sphere
+  float chin = sdSphere(p - vec3(0, -0.48, 0.28), 0.12);
+  skull = smin(skull, chin, 0.1);
+
+  // Cheekbones — prominent, prairie-weathered
+  float cheekL = sdEllipsoid(p - vec3(0.28, -0.08, 0.28), vec3(0.14, 0.08, 0.12));
+  float cheekR = sdEllipsoid(p - vec3(-0.28, -0.08, 0.28), vec3(0.14, 0.08, 0.12));
+  skull = smin(skull, cheekL, 0.12);
+  skull = smin(skull, cheekR, 0.12);
+
+  // Brow ridge — subtle but present
+  float browRidge = sdBox(p - vec3(0, 0.18, 0.38), vec3(0.3, 0.04, 0.08));
+  skull = smin(skull, browRidge, 0.08);
+
+  // Eye sockets — carved in
+  float eyeSocketL = sdEllipsoid(p - vec3(0.16, 0.08, 0.38), vec3(0.1, 0.07, 0.08));
+  float eyeSocketR = sdEllipsoid(p - vec3(-0.16, 0.08, 0.38), vec3(0.1, 0.07, 0.08));
+  skull = smax(skull, -eyeSocketL, 0.04);
+  skull = smax(skull, -eyeSocketR, 0.04);
+
+  // Eyes — storm grey spheres sitting in sockets
+  float eyeL = sdSphere(p - vec3(0.155, 0.08, 0.40), 0.055);
+  float eyeR = sdSphere(p - vec3(-0.155, 0.08, 0.40), 0.055);
+
+  // Eyelids — emotion-driven droop
+  float lidAngleL = -0.1 + emotion * 0.05;
+  float lidAngleR = -0.1 + emotion * 0.05;
+  // Upper eyelids
+  vec3 uLidL = p - vec3(0.155, 0.12, 0.40);
+  uLidL.yz *= rot(lidAngleL);
+  float upperLidL = sdBox(uLidL, vec3(0.07, 0.01, 0.06));
+  vec3 uLidR = p - vec3(-0.155, 0.12, 0.40);
+  uLidR.yz *= rot(lidAngleR);
+  float upperLidR = sdBox(uLidR, vec3(0.07, 0.01, 0.06));
+
+  // Nose — bridge, ball, nostrils
+  vec3 np2 = p - vec3(0, -0.02, 0.42);
+  float noseBridge = sdCapsule(p, vec3(0, 0.12, 0.42), vec3(0, -0.06, 0.50), 0.03);
+  float noseBall = sdSphere(p - vec3(0, -0.08, 0.48), 0.055);
+  float nostrilL = sdSphere(p - vec3(0.035, -0.10, 0.44), 0.025);
+  float nostrilR = sdSphere(p - vec3(-0.035, -0.10, 0.44), 0.025);
+  float nose = smin(noseBridge, noseBall, 0.04);
+  nose = smin(nose, nostrilL, 0.02);
+  nose = smin(nose, nostrilR, 0.02);
+  skull = smin(skull, nose, 0.06);
+
+  // Lips — two capsules with expression
+  // emotion: 0=knowing, 1=listen, 2=storm, 3=warm, 4=remember
+  float lipCurve = 0.0;
+  if(emotion > 2.5 && emotion < 3.5) lipCurve = 0.02; // warm smile
+  if(emotion > 1.5 && emotion < 2.5) lipCurve = -0.01; // tight in storm
+  float upperLip = sdCapsule(p, vec3(-0.08, -0.2, 0.42), vec3(0.08, -0.2, 0.42), 0.022);
+  float lowerLip = sdCapsule(p, vec3(-0.07, -0.24 + lipCurve, 0.40), vec3(0.07, -0.24 + lipCurve, 0.40), 0.025);
+  skull = smin(skull, upperLip, 0.03);
+  skull = smin(skull, lowerLip, 0.03);
+
+  // Ears — simplified
+  float earL = sdEllipsoid(p - vec3(0.50, 0.02, -0.02), vec3(0.04, 0.1, 0.06));
+  float earR = sdEllipsoid(p - vec3(-0.50, 0.02, -0.02), vec3(0.04, 0.1, 0.06));
+  skull = smin(skull, earL, 0.05);
+  skull = smin(skull, earR, 0.05);
+
+  // Neck
+  float neck = sdCapsule(p, vec3(0, -0.42, 0.05), vec3(0, -0.80, 0.0), 0.12);
+  skull = smin(skull, neck, 0.12);
+
+  // Merge eyes and lids
+  skull = min(skull, eyeL);
+  skull = min(skull, eyeR);
+  skull = min(skull, upperLidL);
+  skull = min(skull, upperLidR);
+
+  return skull;
+}
+
+// ═══ HAIR — FLOWING SDF ═══
+float sdHair(vec3 p, float t){
+  // Dark, heavy, Saskatchewan-soil hair. Wind-driven.
+  vec3 hp = p - vec3(0, 0.25, -0.1);
+
+  // Main hair volume on top and back
+  float hair = sdEllipsoid(hp, vec3(0.56, 0.45, 0.62));
+
+  // Side curtains
+  float sideL = sdEllipsoid(p - vec3(0.38, -0.15, 0.0), vec3(0.12, 0.35, 0.2));
+  float sideR = sdEllipsoid(p - vec3(-0.38, -0.15, 0.0), vec3(0.12, 0.35, 0.2));
+  hair = smin(hair, sideL, 0.15);
+  hair = smin(hair, sideR, 0.15);
+
+  // Back length — falls past shoulders
+  float back = sdEllipsoid(p - vec3(0, -0.3, -0.25), vec3(0.30, 0.50, 0.20));
+  hair = smin(hair, back, 0.2);
+
+  // Wind displacement
+  float wind = sin(p.y * 3.0 + t * 1.2) * 0.03 + sin(p.y * 7.0 + t * 2.5) * 0.01;
+  hair += wind * smoothstep(-0.2, -0.6, p.y);
+
+  // Strand-like detail via noise
+  float strands = noise3(p * 12.0 + vec3(0, t * 0.3, 0)) * 0.015;
+  hair += strands;
+
+  return hair;
+}
+
+// ═══ SHOULDERS & UPPER BODY ═══
+float sdBody(vec3 p){
+  // Shoulders
+  float shoulders = sdEllipsoid(p - vec3(0, -0.85, 0.0), vec3(0.55, 0.12, 0.22));
+
+  // Upper torso
+  float torso = sdEllipsoid(p - vec3(0, -1.15, 0.0), vec3(0.40, 0.30, 0.22));
+  shoulders = smin(shoulders, torso, 0.15);
+
+  // Collar area
+  float collar = sdCapsule(p, vec3(-0.2, -0.72, 0.08), vec3(0.2, -0.72, 0.08), 0.04);
+  shoulders = smin(shoulders, collar, 0.08);
+
+  return shoulders;
+}
+
+// ═══ HANDS — WORKER'S HANDS ═══
+float sdHands(vec3 p, float emotion){
+  // Hands visible based on emotion
+  // Warm fire: hands wrapped around mug
+  // Quiet knowing: hands on table
+  // Storm watch: hands at sides, tense
+
+  vec3 handPosL, handPosR;
+  if(emotion > 2.5 && emotion < 3.5){
+    // Warm — hands together, holding something
+    handPosL = vec3(0.12, -1.35, 0.30);
+    handPosR = vec3(-0.12, -1.35, 0.30);
+  } else if(emotion > 1.5 && emotion < 2.5){
+    // Storm — hands gripping edge
+    handPosL = vec3(0.30, -1.40, 0.20);
+    handPosR = vec3(-0.30, -1.40, 0.20);
+  } else {
+    // Default — resting
+    handPosL = vec3(0.25, -1.38, 0.25);
+    handPosR = vec3(-0.25, -1.38, 0.25);
+  }
+
+  // Each hand: palm + fingers
+  float handL = sdEllipsoid(p - handPosL, vec3(0.06, 0.03, 0.08));
+  float handR = sdEllipsoid(p - handPosR, vec3(0.06, 0.03, 0.08));
+
+  // Fingers — four per hand
+  for(int i = 0; i < 4; i++){
+    float fi = float(i);
+    float spread = (fi - 1.5) * 0.025;
+    float fingerL = sdCapsule(p, handPosL + vec3(spread, 0, 0.06),
+                              handPosL + vec3(spread * 1.3, -0.01, 0.14), 0.012);
+    float fingerR = sdCapsule(p, handPosR + vec3(-spread, 0, 0.06),
+                              handPosR + vec3(-spread * 1.3, -0.01, 0.14), 0.012);
+    handL = smin(handL, fingerL, 0.01);
+    handR = smin(handR, fingerR, 0.01);
+  }
+  // Thumbs
+  float thumbL = sdCapsule(p, handPosL + vec3(0.06, 0.01, 0.02),
+                           handPosL + vec3(0.09, 0.01, 0.08), 0.013);
+  float thumbR = sdCapsule(p, handPosR + vec3(-0.06, 0.01, 0.02),
+                           handPosR + vec3(-0.09, 0.01, 0.08), 0.013);
+  handL = smin(handL, thumbL, 0.01);
+  handR = smin(handR, thumbR, 0.01);
+
+  // Forearms
+  float armL = sdCapsule(p, vec3(0.42, -0.90, 0.05), handPosL, 0.045);
+  float armR = sdCapsule(p, vec3(-0.42, -0.90, 0.05), handPosR, 0.045);
+
+  float arms = smin(armL, handL, 0.03);
+  arms = smin(arms, smin(armR, handR, 0.03), 100.0);
+
+  return min(smin(armL, handL, 0.03), smin(armR, handR, 0.03));
+}
+
+// ═══ MUG (warm fire state) ═══
+float sdMug(vec3 p){
+  float cup = sdCylinder(p - vec3(0, -1.32, 0.30), 0.05, 0.06);
+  float hollow = sdCylinder(p - vec3(0, -1.30, 0.30), 0.04, 0.055);
+  cup = max(cup, -hollow);
+  // Handle
+  float handle = sdCapsule(p, vec3(0.05, -1.34, 0.30), vec3(0.08, -1.30, 0.30), 0.008);
+  cup = smin(cup, handle, 0.005);
+  return cup;
+}
+
+// ═══ KITCHEN TABLE SCENE ═══
+float sdKitchenTable(vec3 p){
+  // Table surface
+  float table = sdBox(p - vec3(0, -1.52, 0.15), vec3(1.5, 0.03, 0.8));
+
+  // Subtle wood grain via noise
+  float grain = noise3(p * vec3(2, 40, 2)) * 0.002;
+  table += grain;
+
+  return table;
+}
+
+// ═══ PRAIRIE GROUND ═══
+float sdPrairie(vec3 p){
+  float ground = p.y + 2.0;
+  // Rolling terrain
+  ground += sin(p.x * 0.5) * 0.15 + sin(p.z * 0.3) * 0.1;
+  // Grass texture
+  ground += noise3(p * 3.0) * 0.03;
+  return ground;
+}
+
+// ═══ CAIRN (prairie scene) ═══
+float sdCairn(vec3 p){
+  vec3 cp = p - vec3(2.5, -1.5, -2.0);
+  float cairn = sdSphere(cp, 0.3);
+  cairn = smin(cairn, sdSphere(cp - vec3(0.05, 0.25, 0.02), 0.22), 0.05);
+  cairn = smin(cairn, sdSphere(cp - vec3(-0.03, 0.45, -0.02), 0.17), 0.04);
+  cairn = smin(cairn, sdSphere(cp - vec3(0.02, 0.58, 0.01), 0.12), 0.03);
+  return cairn;
+}
+
+// ═══ MATERIAL ID ═══
+// Returns vec2(distance, materialID)
+// Materials: 0=skin, 1=hair, 2=eyes, 3=clothing, 4=table/ground, 5=mug, 6=cairn, 7=lips
+vec2 mapScene(vec3 p){
+  float emotion = iEmotion;
+
+  // Head tilt based on emotion
+  vec3 headP = p;
+  float tiltX = 0.0, tiltZ = 0.0;
+  if(emotion < 0.5) { tiltX = -0.05; } // knowing — slight tilt
+  else if(emotion < 1.5) { tiltX = 0.08; tiltZ = 0.03; } // listen — head tilted
+  else if(emotion < 2.5) { tiltX = -0.02; } // storm — straight, tense
+  else if(emotion < 3.5) { tiltX = -0.1; tiltZ = -0.02; } // warm — relaxed tilt
+  else { tiltX = 0.05; tiltZ = 0.04; } // remembering — slight look away
+
+  // Breathing
+  float breath = sin(iTime * 1.2) * 0.005;
+  headP.y += breath;
+
+  // Apply tilt
+  headP.xz *= rot(tiltZ * 0.3);
+  headP.yz *= rot(tiltX * 0.3);
+
+  // Head
+  float head = sdHead(headP, emotion);
+
+  // Hair
+  float hair = sdHair(headP, iTime);
+  // Carve hair to sit on skull
+  hair = max(hair, -(head - 0.02));
+
+  // Eyes separately for material
+  float eyeL = sdSphere(headP - vec3(0.155, 0.08, 0.40), 0.055);
+  float eyeR = sdSphere(headP - vec3(-0.155, 0.08, 0.40), 0.055);
+  float eyes = min(eyeL, eyeR);
+
+  // Lips for material
+  float lipCurve = 0.0;
+  if(emotion > 2.5 && emotion < 3.5) lipCurve = 0.02;
+  if(emotion > 1.5 && emotion < 2.5) lipCurve = -0.01;
+  float upperLip = sdCapsule(headP, vec3(-0.08, -0.2, 0.42), vec3(0.08, -0.2, 0.42), 0.022);
+  float lowerLip = sdCapsule(headP, vec3(-0.07, -0.24 + lipCurve, 0.40), vec3(0.07, -0.24 + lipCurve, 0.40), 0.025);
+  float lips = min(upperLip, lowerLip);
+
+  // Body
+  vec3 bodyP = p;
+  bodyP.y += breath;
+  float body = sdBody(bodyP);
+  float hands = sdHands(bodyP, emotion);
+
+  // Start with skin
+  vec2 res = vec2(head, 0.0); // skin
+
+  // Layer materials — closest wins, but track material
+  if(hair < res.x) res = vec2(hair, 1.0);
+  if(eyes < res.x - 0.01) res = vec2(eyes, 2.0); // eyes peek through
+  if(lips < res.x + 0.005) res = vec2(lips, 7.0); // lips on skin
+  if(body < res.x) res = vec2(min(body, res.x), 3.0);
+  if(hands < res.x) res = vec2(hands, 0.0); // hands are skin
+
+  // Scene elements
+  if(iScene < 0.5){
+    // Kitchen
+    float table = sdKitchenTable(p);
+    if(table < res.x) res = vec2(table, 4.0);
+    if(emotion > 2.5 && emotion < 3.5){
+      float mug = sdMug(bodyP);
+      if(mug < res.x) res = vec2(mug, 5.0);
+    }
+  } else {
+    // Prairie
+    float ground = sdPrairie(p);
+    if(ground < res.x) res = vec2(ground, 4.0);
+    float cairn = sdCairn(p);
+    if(cairn < res.x) res = vec2(cairn, 6.0);
+  }
+
+  return res;
+}
+
+float map(vec3 p){ return mapScene(p).x; }
+
+// ═══ NORMAL ═══
+vec3 calcNormal(vec3 p){
+  vec2 e=vec2(0.001,0);
+  return normalize(vec3(
+    map(p+e.xyy)-map(p-e.xyy),
+    map(p+e.yxy)-map(p-e.yxy),
+    map(p+e.yyx)-map(p-e.yyx)
+  ));
+}
+
+// ═══ RAY MARCH ═══
+vec2 rayMarch(vec3 ro, vec3 rd){
+  float t = 0.0;
+  float matID = -1.0;
+  for(int i = 0; i < MAX_STEPS; i++){
+    vec3 p = ro + rd * t;
+    vec2 res = mapScene(p);
+    if(res.x < SURF_DIST){
+      matID = res.y;
+      break;
+    }
+    if(t > MAX_DIST) break;
+    t += res.x * 0.7; // slightly conservative for thin features
+  }
+  return vec2(t, matID);
+}
+
+// ═══ SOFT SHADOW ═══
+float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k){
+  float res = 1.0;
+  float t = mint;
+  for(int i = 0; i < 48; i++){
+    float h = map(ro + rd * t);
+    res = min(res, k * h / t);
+    if(h < 0.001 || t > maxt) break;
+    t += clamp(h, 0.01, 0.2);
+  }
+  return clamp(res, 0.0, 1.0);
+}
+
+// ═══ AMBIENT OCCLUSION ═══
+float calcAO(vec3 p, vec3 n){
+  float occ = 0.0;
+  float sca = 1.0;
+  for(int i = 0; i < 5; i++){
+    float h = 0.01 + 0.12 * float(i);
+    float d = map(p + n * h);
+    occ += (h - d) * sca;
+    sca *= 0.7;
+  }
+  return clamp(1.0 - 1.5 * occ, 0.0, 1.0);
+}
+
+// ═══ SUBSURFACE SCATTERING APPROX ═══
+float subsurface(vec3 p, vec3 n, vec3 lightDir){
+  // Light wraps around thin geometry
+  float dot_nl = dot(n, lightDir);
+  float sss = max(0.0, dot_nl * 0.5 + 0.5);
+  // Check thickness
+  float thickness = map(p - n * 0.1) + map(p - n * 0.2);
+  return sss * smoothstep(-0.1, 0.5, thickness) * 0.3;
+}
+
+// ═══ MATERIALS ═══
+vec3 getMaterial(float matID, vec3 p, vec3 n, vec3 lightDir, float emotion){
+  vec3 col;
+
+  if(matID < 0.5){
+    // SKIN — warm, weathered, prairie-toned
+    vec3 skinBase = vec3(0.82, 0.68, 0.58);
+    // Subtle variation
+    float freckle = noise3(p * 30.0) * 0.05;
+    skinBase += freckle * vec3(0.1, -0.02, -0.04);
+    // Flush in warm state
+    if(emotion > 2.5 && emotion < 3.5){
+      float cheekFlush = smoothstep(0.3, 0.0, length(p.xz - vec2(0.22, 0.25)));
+      cheekFlush += smoothstep(0.3, 0.0, length(p.xz - vec2(-0.22, 0.25)));
+      skinBase += cheekFlush * vec3(0.08, 0.02, 0.01) * 0.5;
+    }
+    col = skinBase;
+  }
+  else if(matID < 1.5){
+    // HAIR — dark soil after rain
+    vec3 hairBase = vec3(0.08, 0.06, 0.05);
+    // Highlight strands
+    float strand = noise3(p * 40.0 + vec3(0, iTime * 0.1, 0));
+    hairBase += strand * vec3(0.04, 0.03, 0.02);
+    // Slight warm highlight in light
+    float highlight = pow(max(0.0, dot(n, lightDir)), 8.0);
+    hairBase += highlight * vec3(0.12, 0.08, 0.04);
+    col = hairBase;
+  }
+  else if(matID < 2.5){
+    // EYES — storm grey
+    vec3 eyeBase = vec3(0.45, 0.48, 0.52);
+    // Iris ring
+    float irisR = length(p.xz - vec2(sign(p.x) * 0.155, 0.40));
+    if(irisR < 0.045){
+      eyeBase = vec3(0.35, 0.40, 0.48); // deeper grey
+      // Pupil
+      if(irisR < 0.015) eyeBase = vec3(0.02);
+      // Iris detail
+      float irisDetail = noise3(normalize(vec3(p.x - sign(p.x) * 0.155, p.y - 0.08, p.z - 0.40)) * 20.0);
+      eyeBase += irisDetail * vec3(0.05, 0.06, 0.08);
+    } else {
+      eyeBase = vec3(0.92, 0.91, 0.90); // sclera
+    }
+    // Eye shine
+    float shine = pow(max(0.0, dot(reflect(-lightDir, n), normalize(vec3(0,0,1)))), 32.0);
+    eyeBase += shine * vec3(0.5);
+    col = eyeBase;
+  }
+  else if(matID < 3.5){
+    // CLOTHING — earth tones, heavy knit
+    vec3 clothBase = vec3(0.22, 0.18, 0.14);
+    // Knit texture
+    float knit = sin(p.y * 60.0) * sin(p.x * 40.0) * 0.02;
+    clothBase += knit;
+    col = clothBase;
+  }
+  else if(matID < 4.5){
+    // TABLE or GROUND
+    if(iScene < 0.5){
+      // Kitchen table — warm wood
+      vec3 wood = vec3(0.45, 0.30, 0.18);
+      float grain = noise3(vec3(p.x * 2.0, p.z * 20.0, 0.0));
+      wood += grain * vec3(0.08, 0.05, 0.02);
+      col = wood;
+    } else {
+      // Prairie — golden grass
+      vec3 grass = vec3(0.35, 0.32, 0.18);
+      float grassDetail = noise3(p * 8.0 + vec3(iTime * 0.2, 0, 0));
+      grass += grassDetail * vec3(0.1, 0.08, 0.02);
+      // Distance fade
+      float dist = length(p.xz);
+      grass = mix(grass, vec3(0.5, 0.45, 0.35), smoothstep(3.0, 15.0, dist));
+      col = grass;
+    }
+  }
+  else if(matID < 5.5){
+    // MUG — ceramic
+    col = vec3(0.6, 0.55, 0.48);
+  }
+  else if(matID < 6.5){
+    // CAIRN — grey stone
+    vec3 stone = vec3(0.42, 0.40, 0.38);
+    stone += noise3(p * 10.0) * vec3(0.06, 0.05, 0.04);
+    col = stone;
+  }
+  else {
+    // LIPS
+    col = vec3(0.65, 0.42, 0.38);
+    if(emotion > 2.5 && emotion < 3.5) col += vec3(0.05, 0.01, 0.01);
+  }
+
+  return col;
+}
+
+// ═══ LIGHTING ═══
+vec3 render(vec3 ro, vec3 rd){
+  vec2 res = rayMarch(ro, rd);
+  float t = res.x;
+  float matID = res.y;
+
+  // Background
+  vec3 col;
+  if(iScene < 0.5){
+    // Kitchen — warm interior
+    col = vec3(0.12, 0.10, 0.08);
+    // Window light gradient
+    float windowGlow = smoothstep(-0.5, 0.8, rd.y) * 0.15;
+    col += vec3(windowGlow * 1.2, windowGlow, windowGlow * 0.7);
+  } else {
+    // Prairie sky
+    float skyGrad = smoothstep(-0.1, 0.6, rd.y);
+    col = mix(vec3(0.55, 0.50, 0.42), vec3(0.45, 0.55, 0.70), skyGrad);
+    // Clouds
+    float clouds = noise3(vec3(rd.x * 3.0 + iTime * 0.02, rd.y * 2.0, rd.z * 3.0));
+    col = mix(col, vec3(0.85, 0.82, 0.78), smoothstep(0.4, 0.7, clouds) * 0.4);
+    // Horizon haze
+    col = mix(vec3(0.6, 0.55, 0.48), col, smoothstep(-0.05, 0.15, rd.y));
+  }
+
+  if(t < MAX_DIST){
+    vec3 p = ro + rd * t;
+    vec3 n = calcNormal(p);
+    float ao = calcAO(p, n);
+
+    // Light direction based on scene
+    vec3 lightDir;
+    vec3 lightCol;
+    if(iScene < 0.5){
+      // Kitchen: warm window light from side
+      lightDir = normalize(vec3(0.6, 0.5, 0.3));
+      lightCol = vec3(1.0, 0.92, 0.78); // warm tungsten
+    } else {
+      // Prairie: sun from above-right
+      float sunAngle = iTime * 0.02;
+      lightDir = normalize(vec3(0.5, 0.7, 0.3));
+      lightCol = vec3(1.0, 0.95, 0.85); // natural daylight
+      // Storm watch: darker, colder
+      if(iEmotion > 1.5 && iEmotion < 2.5){
+        lightCol = vec3(0.6, 0.65, 0.7);
+      }
+    }
+
+    // Diffuse
+    float diff = max(0.0, dot(n, lightDir));
+
+    // Shadow
+    float shadow = softShadow(p + n * 0.01, lightDir, 0.02, 5.0, 16.0);
+
+    // Specular
+    vec3 viewDir = normalize(ro - p);
+    vec3 halfDir = normalize(lightDir + viewDir);
+    float spec = pow(max(0.0, dot(n, halfDir)), 32.0);
+
+    // SSS for skin
+    float sss = 0.0;
+    if(matID < 0.5 || matID > 6.5){ // skin or lips
+      sss = subsurface(p, n, lightDir);
+    }
+
+    // Material color
+    vec3 matCol = getMaterial(matID, p, n, lightDir, iEmotion);
+
+    // Combine lighting
+    vec3 ambient = vec3(0.08, 0.07, 0.06) * ao;
+    if(iScene > 0.5) ambient = vec3(0.12, 0.11, 0.10) * ao;
+
+    col = matCol * (ambient + lightCol * diff * shadow * 0.8);
+    col += lightCol * spec * shadow * 0.15;
+    col += matCol * sss * lightCol * 0.3;
+
+    // Rim light
+    float rim = pow(1.0 - max(0.0, dot(n, viewDir)), 4.0);
+    col += rim * vec3(0.15, 0.12, 0.10) * 0.3;
+
+    // Fog / depth fade
+    float fog = 1.0 - exp(-t * t * 0.005);
+    vec3 fogCol = iScene < 0.5 ? vec3(0.12, 0.10, 0.08) : vec3(0.55, 0.50, 0.45);
+    col = mix(col, fogCol, fog);
+  }
+
+  return col;
+}
+
+// ═══ CAMERA ═══
+mat3 setCamera(vec3 ro, vec3 ta){
+  vec3 cw = normalize(ta - ro);
+  vec3 cp = vec3(0, 1, 0);
+  vec3 cu = normalize(cross(cw, cp));
+  vec3 cv = cross(cu, cw);
+  return mat3(cu, cv, cw);
+}
+
+void main(){
+  vec3 tot = vec3(0.0);
+
+  for(int m = 0; m < AA; m++)
+  for(int n = 0; n < AA; n++){
+    vec2 o = vec2(float(m), float(n)) / float(AA) - 0.5;
+    vec2 p = (2.0 * (gl_FragCoord.xy + o) - iResolution) / iResolution.y;
+
+    // Camera
+    vec3 ro = iCamPos;
+    vec3 ta = iCamTarget;
+    mat3 ca = setCamera(ro, ta);
+
+    // DOF-like focal softness (subtle)
+    float focalLen = 2.0;
+    vec3 rd = ca * normalize(vec3(p, focalLen));
+
+    vec3 col = render(ro, rd);
+
+    // Tone mapping
+    col = col / (col + 0.5);
+
+    // Subtle vignette
+    vec2 q = gl_FragCoord.xy / iResolution;
+    col *= 0.5 + 0.5 * pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.15);
+
+    // Film grain
+    float grain = (noise3(vec3(gl_FragCoord.xy * 0.5, iTime * 10.0)) - 0.5) * 0.03;
+    col += grain;
+
+    tot += col;
+  }
+
+  tot /= float(AA * AA);
+
+  // Gamma
+  tot = pow(tot, vec3(1.0 / 2.2));
+
+  fragColor = vec4(tot, 1.0);
+}
+`;
+
+// ═══ COMPILE ═══
+function compileShader(src,type){
+  const s=gl.createShader(type);
+  gl.shaderSource(s,src);gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){
+    console.error('Shader error:',gl.getShaderInfoLog(s));
+    // Show error on screen
+    const err=gl.getShaderInfoLog(s);
+    document.getElementById('info').innerHTML+=`<br><span style="color:#f44">${err.substring(0,200)}</span>`;
+    return null;
+  }
+  return s;
+}
+
+const vs=compileShader(VS,gl.VERTEX_SHADER);
+const fs=compileShader(FS,gl.FRAGMENT_SHADER);
+const prog=gl.createProgram();
+gl.attachShader(prog,vs);gl.attachShader(prog,fs);
+gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){
+  console.error('Link error:',gl.getProgramInfoLog(prog));
+}
+gl.useProgram(prog);
+
+// Fullscreen quad
+const quad=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+const pLoc=gl.getAttribLocation(prog,'p');
+gl.enableVertexAttribArray(pLoc);
+gl.vertexAttribPointer(pLoc,2,gl.FLOAT,false,0,0);
+
+// Uniforms
+const uTime=gl.getUniformLocation(prog,'iTime');
+const uRes=gl.getUniformLocation(prog,'iResolution');
+const uScene=gl.getUniformLocation(prog,'iScene');
+const uEmotion=gl.getUniformLocation(prog,'iEmotion');
+const uCamPos=gl.getUniformLocation(prog,'iCamPos');
+const uCamTarget=gl.getUniformLocation(prog,'iCamTarget');
+
+// ═══ RESIZE ═══
+function resize(){
+  const dpr=Math.min(window.devicePixelRatio||1, 1.5); // cap DPR for performance
+  canvas.width=window.innerWidth*dpr;
+  canvas.height=window.innerHeight*dpr;
+  gl.viewport(0,0,canvas.width,canvas.height);
+}
+resize();
+window.addEventListener('resize',resize);
+
+// ═══ INPUT ═══
+canvas.addEventListener('mousedown',e=>{dragging=true;lastMX=e.clientX;lastMY=e.clientY;});
+canvas.addEventListener('mouseup',()=>dragging=false);
+canvas.addEventListener('mouseleave',()=>dragging=false);
+canvas.addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  targetTheta+=(e.clientX-lastMX)*0.005;
+  targetPhi=Math.max(-0.5,Math.min(1.2,targetPhi+(e.clientY-lastMY)*0.005));
+  lastMX=e.clientX;lastMY=e.clientY;
+});
+canvas.addEventListener('wheel',e=>{
+  targetDist=Math.max(2,Math.min(10,targetDist+e.deltaY*0.005));
+  e.preventDefault();
+},{passive:false});
+
+window.addEventListener('keydown',e=>{
+  const k=parseInt(e.key);
+  if(k>=1&&k<=5){setState(k-1);return;}
+});
+
+function setScene(s,el){
+  scene=s;
+  document.querySelectorAll('.btn').forEach(b=>{
+    if(b.textContent==='Kitchen Table'||b.textContent==='Prairie')b.classList.remove('active');
+  });
+  if(el)el.classList.add('active');
+}
+
+function setState(s,el){
+  emotionTarget=s;
+  document.getElementById('state-label').textContent=stateNames[s];
+  document.querySelectorAll('.btn').forEach(b=>{
+    if(stateNames.includes(b.textContent))b.classList.remove('active');
+  });
+  const btn=document.getElementById('s'+s);
+  if(btn)btn.classList.add('active');
+}
+
+// ═══ RENDER LOOP ═══
+let lastTime=performance.now();
+function frame(now){
+  const dt=(now-lastTime)*0.001;
+  lastTime=now;
+  time+=dt;
+
+  // Smooth camera
+  camTheta+=(targetTheta-camTheta)*0.08;
+  camPhi+=(targetPhi-camPhi)*0.08;
+  camDist+=(targetDist-camDist)*0.08;
+
+  // Smooth emotion
+  emotionCurrent+=(emotionTarget-emotionCurrent)*0.03;
+
+  // Camera position
+  const cx=Math.sin(camTheta)*Math.cos(camPhi)*camDist;
+  const cy=Math.sin(camPhi)*camDist-0.3;
+  const cz=Math.cos(camTheta)*Math.cos(camPhi)*camDist;
+
+  gl.uniform1f(uTime,time);
+  gl.uniform2f(uRes,canvas.width,canvas.height);
+  gl.uniform1f(uScene,scene);
+  gl.uniform1f(uEmotion,emotionCurrent);
+  gl.uniform3f(uCamPos,cx,cy,cz);
+  gl.uniform3f(uCamTarget,0,-0.2,0);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

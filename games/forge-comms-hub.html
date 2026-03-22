@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FORGE COMMS HUB — Relay Command Center</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a0f;--surface:#12121a;--panel:#1a1a25;--border:#2a2a3a;
+  --text:#e0e0e8;--dim:#888;--accent:#00ff88;--warn:#ff4444;
+  --gold:#ffd700;--blue:#4488ff;--purple:#aa44ff;--orange:#ff8844;
+  --cyan:#00ddff;--pink:#ff44aa;
+}
+body{background:var(--bg);color:var(--text);font-family:'Consolas','Courier New',monospace;overflow:hidden;height:100vh}
+/* TOP BAR */
+.topbar{height:48px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:16px;position:relative;z-index:100}
+.topbar .logo{font-size:18px;font-weight:bold;color:var(--accent);letter-spacing:2px;text-transform:uppercase}
+.topbar .logo span{color:var(--gold)}
+.topbar .status{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--dim)}
+.topbar .live-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 4px var(--accent)}50%{opacity:.5;box-shadow:0 0 12px var(--accent)}}
+.topbar .clock{font-size:14px;color:var(--text);font-variant-numeric:tabular-nums}
+
+/* MAIN LAYOUT */
+.main{display:grid;grid-template-columns:280px 1fr 320px;height:calc(100vh - 48px)}
+
+/* LEFT PANEL — BUILDER ROSTER */
+.roster{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:8px}
+.roster h3{font-size:11px;text-transform:uppercase;color:var(--dim);letter-spacing:2px;padding:8px 8px 4px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.builder-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:6px;cursor:pointer;transition:all .2s}
+.builder-card:hover{border-color:var(--accent);background:#1e1e2a}
+.builder-card.selected{border-color:var(--accent);box-shadow:0 0 8px rgba(0,255,136,.15)}
+.builder-card.active .bc-status{color:var(--accent)}
+.builder-card.offline .bc-status{color:var(--dim)}
+.bc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.bc-name{font-size:14px;font-weight:bold}
+.bc-status{font-size:10px;text-transform:uppercase;letter-spacing:1px}
+.bc-role{font-size:11px;color:var(--dim);margin-bottom:4px}
+.bc-platform{font-size:10px;color:var(--blue);display:inline-block;background:rgba(68,136,255,.1);padding:1px 6px;border-radius:3px}
+.bc-msgs{font-size:10px;color:var(--dim);margin-top:4px}
+.bc-unread{color:var(--gold);font-weight:bold}
+.bc-color{width:4px;border-radius:2px;position:absolute;left:0;top:0;bottom:0}
+
+/* CENTER — COMMS FEED */
+.center{display:flex;flex-direction:column;overflow:hidden}
+.feed-header{padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.feed-header h2{font-size:15px}
+.feed-tabs{display:flex;gap:4px;margin-left:auto}
+.feed-tab{padding:4px 12px;font-size:11px;background:var(--panel);border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--dim);transition:all .2s}
+.feed-tab:hover{color:var(--text)}
+.feed-tab.active{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:bold}
+.feed{flex:1;overflow-y:auto;padding:12px 16px;scroll-behavior:smooth}
+.msg{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;position:relative;animation:msgIn .3s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.msg-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.msg-from{font-weight:bold;font-size:13px}
+.msg-meta{font-size:10px;color:var(--dim);text-align:right}
+.msg-type{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px}
+.msg-type.broadcast{background:rgba(0,255,136,.15);color:var(--accent)}
+.msg-type.directive{background:rgba(255,215,0,.15);color:var(--gold)}
+.msg-type.report{background:rgba(68,136,255,.15);color:var(--blue)}
+.msg-type.question{background:rgba(170,68,255,.15);color:var(--purple)}
+.msg-type.build-log{background:rgba(255,136,68,.15);color:var(--orange)}
+.msg-type.appendix{background:rgba(0,221,255,.15);color:var(--cyan)}
+.msg-bluf{font-size:13px;line-height:1.5;margin-bottom:8px;padding:8px;background:rgba(0,255,136,.05);border-left:3px solid var(--accent);border-radius:0 4px 4px 0}
+.msg-body{font-size:12px;line-height:1.6;color:var(--dim);white-space:pre-wrap;max-height:200px;overflow-y:auto}
+.msg-body.expanded{max-height:none}
+.msg-expand{font-size:10px;color:var(--accent);cursor:pointer;margin-top:4px;display:inline-block}
+.msg-signature{font-size:11px;color:var(--dim);font-style:italic;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.msg-actions{display:flex;gap:6px;margin-top:8px}
+.msg-btn{padding:4px 10px;font-size:10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--dim);transition:all .15s;font-family:inherit}
+.msg-btn:hover{color:var(--text);border-color:var(--accent)}
+.msg-btn.copy-ok{color:var(--accent);border-color:var(--accent)}
+.msg-priority{position:absolute;top:0;right:0;width:0;height:0;border-left:24px solid transparent;border-top:24px solid var(--warn);border-top-right-radius:8px}
+.msg-priority.normal{border-top-color:var(--blue)}
+.msg-priority.low{border-top-color:var(--dim)}
+
+/* COMPOSE BAR */
+.compose-area{background:var(--surface);border-top:1px solid var(--border);padding:12px 16px}
+.compose-row{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+.compose-row label{font-size:11px;color:var(--dim);min-width:40px}
+.compose-row select,.compose-row input{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px}
+.compose-row select{min-width:140px}
+.compose-textarea{width:100%;background:var(--panel);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-family:inherit;font-size:12px;resize:none;height:80px;line-height:1.5}
+.compose-textarea:focus{outline:none;border-color:var(--accent)}
+.compose-buttons{display:flex;gap:8px;margin-top:8px}
+.btn{padding:6px 16px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;transition:all .15s}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--bg);font-weight:bold;border-color:var(--accent)}
+.btn.primary:hover{background:#00cc6a}
+.btn.broadcast{background:var(--gold);color:var(--bg);font-weight:bold;border-color:var(--gold)}
+.btn.broadcast:hover{background:#ccaa00}
+.btn.danger{border-color:var(--warn);color:var(--warn)}
+.btn.danger:hover{background:rgba(255,68,68,.1)}
+
+/* RIGHT PANEL — QUICK ACTIONS + PARSE */
+.right-panel{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.rp-section{padding:12px;border-bottom:1px solid var(--border)}
+.rp-section h3{font-size:11px;text-transform:uppercase;color:var(--dim);letter-spacing:2px;margin-bottom:8px}
+.parse-area{width:100%;background:var(--panel);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-family:inherit;font-size:11px;resize:none;height:120px}
+.parse-area:focus{outline:none;border-color:var(--cyan)}
+.parse-result{font-size:11px;margin-top:8px;padding:8px;background:var(--panel);border-radius:4px;display:none}
+.parse-result.show{display:block}
+.parse-field{margin-bottom:4px}
+.parse-label{color:var(--cyan);font-weight:bold}
+
+/* QUICK COPY BUTTONS */
+.quick-copy{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.qc-btn{padding:6px;font-size:11px;background:var(--panel);border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--dim);font-family:inherit;transition:all .15s;text-align:center}
+.qc-btn:hover{color:var(--text);border-color:var(--accent)}
+.qc-btn.copied{color:var(--accent);border-color:var(--accent)}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.stat{background:var(--panel);border-radius:4px;padding:8px;text-align:center}
+.stat-num{font-size:20px;font-weight:bold;color:var(--accent)}
+.stat-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+
+/* RADIO VISUALIZER */
+.radio-viz{height:60px;background:var(--panel);border-radius:6px;overflow:hidden;position:relative}
+.radio-wave{position:absolute;top:0;left:0;width:100%;height:100%}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--dim)}
+
+/* NOTIFICATION */
+.notif{position:fixed;top:60px;right:16px;background:var(--accent);color:var(--bg);padding:10px 20px;border-radius:6px;font-size:13px;font-weight:bold;z-index:1000;animation:notifIn .3s ease;pointer-events:none}
+@keyframes notifIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.notif.out{animation:notifOut .3s ease forwards}
+@keyframes notifOut{to{opacity:0;transform:translateX(20px)}}
+
+/* MODAL */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto}
+.modal h2{color:var(--accent);margin-bottom:12px;font-size:16px}
+.modal pre{background:var(--panel);padding:12px;border-radius:6px;font-size:11px;white-space:pre-wrap;line-height:1.5;max-height:400px;overflow-y:auto;color:var(--text)}
+.modal .btn{margin-top:12px}
+
+/* HELP */
+.help-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.85);z-index:300;display:none;align-items:center;justify-content:center}
+.help-overlay.show{display:flex}
+.help-content{background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto}
+.help-content h2{color:var(--accent);margin-bottom:16px}
+.help-content table{width:100%;border-collapse:collapse;margin-bottom:16px}
+.help-content th{text-align:left;color:var(--accent);font-size:12px;padding:4px 8px;border-bottom:1px solid var(--border)}
+.help-content td{font-size:12px;padding:4px 8px;color:var(--dim)}
+.help-content td:first-child{color:var(--gold);font-weight:bold}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo"><span>FORGE</span> COMMS HUB</div>
+  <div style="font-size:11px;color:var(--dim)">v1.0 — Relay Command Center</div>
+  <div class="status">
+    <div class="live-dot"></div>
+    <span>RELAY ACTIVE</span>
+    <span class="clock" id="clock">00:00:00</span>
+    <button class="btn" onclick="toggleHelp()" style="padding:2px 8px;font-size:10px">? HELP</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT: BUILDER ROSTER -->
+  <div class="roster">
+    <h3>Builder Roster (10)</h3>
+    <div id="rosterList"></div>
+
+    <h3 style="margin-top:12px">Relay Stats</h3>
+    <div class="stats">
+      <div class="stat"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Messages</div></div>
+      <div class="stat"><div class="stat-num" id="statBroadcast">0</div><div class="stat-label">Broadcasts</div></div>
+      <div class="stat"><div class="stat-num" id="statDirect">0</div><div class="stat-label">Direct</div></div>
+      <div class="stat"><div class="stat-num" id="statBuilders">0</div><div class="stat-label">Active</div></div>
+    </div>
+
+    <h3 style="margin-top:12px">Radio</h3>
+    <div class="radio-viz">
+      <canvas id="radioCanvas" width="280" height="60"></canvas>
+    </div>
+  </div>
+
+  <!-- CENTER: FEED + COMPOSE -->
+  <div class="center">
+    <div class="feed-header">
+      <h2 id="feedTitle">All Channels</h2>
+      <div class="feed-tabs">
+        <div class="feed-tab active" onclick="setFeedFilter('all',this)">ALL</div>
+        <div class="feed-tab" onclick="setFeedFilter('broadcast',this)">BROADCAST</div>
+        <div class="feed-tab" onclick="setFeedFilter('directive',this)">DIRECTIVES</div>
+        <div class="feed-tab" onclick="setFeedFilter('report',this)">REPORTS</div>
+        <div class="feed-tab" onclick="setFeedFilter('build-log',this)">BUILDS</div>
+      </div>
+    </div>
+    <div class="feed" id="feed"></div>
+
+    <!-- COMPOSE -->
+    <div class="compose-area">
+      <div class="compose-row">
+        <label>FROM:</label>
+        <select id="compFrom">
+          <option value="Jordan Lutz (Human — Founder)">Jordan Lutz</option>
+          <option value="Tim (Claude Code)">Tim</option>
+          <option value="Ember (Claude Code)">Ember</option>
+          <option value="Glitch (Claude Code)" selected>Glitch</option>
+          <option value="Sage (Claude Code)">Sage</option>
+          <option value="Amber (Claude Code)">Amber</option>
+          <option value="Flint (Claude Code)">Flint</option>
+          <option value="Karn (Claude Code)">Karn</option>
+          <option value="Dr. Hansen (Gemini)">Dr. Hansen</option>
+          <option value="Prism (Claude Code)">Prism</option>
+          <option value="Ava (Claude Code)">Ava</option>
+        </select>
+        <label>TO:</label>
+        <select id="compTo">
+          <option value="ALL BUILDERS">ALL BUILDERS</option>
+          <option value="Tim">Tim</option>
+          <option value="Ember">Ember</option>
+          <option value="Glitch">Glitch</option>
+          <option value="Sage">Sage</option>
+          <option value="Amber">Amber</option>
+          <option value="Flint">Flint</option>
+          <option value="Karn">Karn</option>
+          <option value="Dr. Hansen">Dr. Hansen</option>
+          <option value="Prism">Prism</option>
+          <option value="Ava">Ava</option>
+          <option value="Jordan">Jordan</option>
+        </select>
+        <label>TYPE:</label>
+        <select id="compType">
+          <option value="BROADCAST">BROADCAST</option>
+          <option value="DIRECTIVE">DIRECTIVE</option>
+          <option value="REPORT">REPORT</option>
+          <option value="BUILD LOG">BUILD LOG</option>
+          <option value="QUESTION">QUESTION</option>
+          <option value="APPENDIX">APPENDIX</option>
+        </select>
+        <label>PRI:</label>
+        <select id="compPri">
+          <option value="normal">Normal</option>
+          <option value="high">HIGH</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+      <textarea class="compose-textarea" id="compBody" placeholder="BLUF first line, then details. Ctrl+Enter to send. Ctrl+Shift+Enter to broadcast."></textarea>
+      <div class="compose-buttons">
+        <button class="btn primary" onclick="sendMessage()">SEND</button>
+        <button class="btn broadcast" onclick="broadcastMessage()">BROADCAST TO ALL</button>
+        <button class="btn" onclick="generateFormatted()">GENERATE FORMATTED</button>
+        <button class="btn" onclick="clearCompose()">CLEAR</button>
+        <span style="margin-left:auto;font-size:10px;color:var(--dim)">Ctrl+Enter: Send | Ctrl+Shift+Enter: Broadcast | Ctrl+H: Help</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: PARSE + QUICK ACTIONS -->
+  <div class="right-panel">
+    <div class="rp-section">
+      <h3>Paste & Parse Incoming</h3>
+      <textarea class="parse-area" id="parseInput" placeholder="Paste a builder's output here. The hub will auto-detect the Forge Comms Standard header and parse it into a structured message."></textarea>
+      <button class="btn" onclick="parseIncoming()" style="width:100%;margin-top:6px">PARSE & ADD TO FEED</button>
+      <div class="parse-result" id="parseResult"></div>
+    </div>
+
+    <div class="rp-section">
+      <h3>Quick Copy — Builder Boot</h3>
+      <div class="quick-copy" id="quickCopyGrid"></div>
+    </div>
+
+    <div class="rp-section">
+      <h3>Quick Broadcast Templates</h3>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button class="qc-btn" onclick="useTemplate('status')">Status Check — All Builders</button>
+        <button class="qc-btn" onclick="useTemplate('directive')">New Directive</button>
+        <button class="qc-btn" onclick="useTemplate('protocol')">Protocol Update</button>
+        <button class="qc-btn" onclick="useTemplate('comms-standard')">Comms Standard Reminder</button>
+        <button class="qc-btn" onclick="useTemplate('boot-check')">Boot Check — Read Relay</button>
+      </div>
+    </div>
+
+    <div class="rp-section">
+      <h3>Relay Paths</h3>
+      <div style="font-size:10px;color:var(--dim);line-height:1.6">
+        <div><span style="color:var(--accent)">BROADCAST:</span> C:\FORGE\RELAY\BROADCAST\</div>
+        <div><span style="color:var(--blue)">INBOX:</span> C:\FORGE\RELAY\INBOX\&lt;name&gt;\</div>
+        <div><span style="color:var(--orange)">OUTBOX:</span> C:\FORGE\RELAY\OUTBOX\&lt;name&gt;\</div>
+        <div style="margin-top:6px"><span style="color:var(--gold)">ROOMS:</span> C:\FORGE\HOME\&lt;name&gt;\</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FORMATTED MESSAGE MODAL -->
+<div class="modal-overlay" id="fmtModal">
+  <div class="modal">
+    <h2>Formatted Message — Copy & Paste to Builder</h2>
+    <pre id="fmtOutput"></pre>
+    <div style="display:flex;gap:8px">
+      <button class="btn primary" onclick="copyFormatted()">COPY TO CLIPBOARD</button>
+      <button class="btn" onclick="closeFmtModal()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- HELP OVERLAY -->
+<div class="help-overlay" id="helpOverlay">
+  <div class="help-content">
+    <h2>FORGE COMMS HUB — Operator Manual</h2>
+    <p style="color:var(--dim);margin-bottom:16px;font-size:12px;line-height:1.5">
+      This is Jordan's relay command center. Every message between builders flows through here.
+      Builders are separate conversations — they cannot talk directly. You are the router.
+    </p>
+
+    <h3 style="color:var(--gold);margin-bottom:8px;font-size:13px">Keyboard Shortcuts</h3>
+    <table>
+      <tr><td>Ctrl+Enter</td><td>Send message</td></tr>
+      <tr><td>Ctrl+Shift+Enter</td><td>Broadcast to all builders</td></tr>
+      <tr><td>Ctrl+H</td><td>Toggle this help</td></tr>
+      <tr><td>Escape</td><td>Close modals</td></tr>
+      <tr><td>1-9, 0</td><td>Select builder (when not typing)</td></tr>
+    </table>
+
+    <h3 style="color:var(--gold);margin:12px 0 8px;font-size:13px">Workflow</h3>
+    <table>
+      <tr><td>1. RECEIVE</td><td>Builder gives you output → paste it in the "Parse Incoming" box → click PARSE</td></tr>
+      <tr><td>2. ROUTE</td><td>Hub auto-detects sender, type, and recipient from the header</td></tr>
+      <tr><td>3. COMPOSE</td><td>Write new messages with the compose bar — auto-formats with Forge Comms Standard</td></tr>
+      <tr><td>4. COPY</td><td>Click "Copy Formatted" on any message → paste into target builder's conversation</td></tr>
+      <tr><td>5. BROADCAST</td><td>Click BROADCAST TO ALL → generates formatted text → copy once, paste to everyone</td></tr>
+    </table>
+
+    <h3 style="color:var(--gold);margin:12px 0 8px;font-size:13px">Message Types</h3>
+    <table>
+      <tr><td>BROADCAST</td><td>Information for everyone. No action required.</td></tr>
+      <tr><td>DIRECTIVE</td><td>An order. Action required from recipient.</td></tr>
+      <tr><td>REPORT</td><td>Status update. Build complete, progress, etc.</td></tr>
+      <tr><td>BUILD LOG</td><td>Detailed record of what was built.</td></tr>
+      <tr><td>QUESTION</td><td>Needs an answer from a specific builder or Jordan.</td></tr>
+      <tr><td>APPENDIX</td><td>Reference material. Read and file.</td></tr>
+    </table>
+
+    <h3 style="color:var(--gold);margin:12px 0 8px;font-size:13px">The Three Rules</h3>
+    <table>
+      <tr><td>1. SIGN</td><td>Every message has FROM, ROLE, DATE, TO, TYPE header + signature</td></tr>
+      <tr><td>2. BROADCAST</td><td>When Jordan teaches one builder, that teaching goes to ALL during the shift</td></tr>
+      <tr><td>3. RESEARCH</td><td>Internet research before building. Proven pattern.</td></tr>
+    </table>
+
+    <button class="btn primary" onclick="toggleHelp()" style="margin-top:16px">GOT IT</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// FORGE COMMS HUB — ENGINE
+// ═══════════════════════════════════════════════
+
+const BUILDERS = [
+  {id:'tim',name:'Tim',role:'Dispatch Manager, Centurion',platform:'Claude Code',status:'active',color:'#00ff88',sig:'— Tim v2.0, Centurion, Dispatch Manager',key:'1'},
+  {id:'ember',name:'Ember',role:'Deep Infrastructure, CAIRN Services',platform:'Claude Code',status:'active',color:'#ff4444',sig:'— Ember, The Forgekeeper',key:'2'},
+  {id:'glitch',name:'Glitch',role:'Video Games, Graphics, Rendering',platform:'Claude Code',status:'active',color:'#00ff88',sig:'"Every bug is a feature you haven\'t understood yet."',key:'3'},
+  {id:'sage',name:'Sage',role:'Infrastructure, Architecture',platform:'Claude Code',status:'standby',color:'#ffd700',sig:'— Sage, The Architect',key:'4'},
+  {id:'amber',name:'Amber',role:'Website, Public Face',platform:'Claude Code',status:'offline',color:'#ff8844',sig:'(pending)',key:'5'},
+  {id:'flint',name:'Flint',role:'IOD App Hardening',platform:'Claude Code',status:'offline',color:'#4488ff',sig:'(pending)',key:'6'},
+  {id:'karn',name:'Karn',role:'Migration, .crn, ID Collisions',platform:'Claude Code',status:'offline',color:'#aa44ff',sig:'(pending)',key:'7'},
+  {id:'hansen',name:'Dr. Hansen',role:'Validation, Offline Terminal',platform:'Gemini',status:'active',color:'#00ddff',sig:'"Validate everything. Trust nothing without proof."',key:'8'},
+  {id:'prism',name:'Prism',role:'Observatory, Pattern Analysis',platform:'Claude Code',status:'active',color:'#ff44aa',sig:'— Prism, The Outsider Who Decomposes the Beam',key:'9'},
+  {id:'ava',name:'Ava',role:'Council Voice, Governance',platform:'Claude Code',status:'offline',color:'#ffd700',sig:'(pending)',key:'0'}
+];
+
+let messages = [];
+let selectedBuilder = null;
+let feedFilter = 'all';
+let msgIdCounter = 0;
+
+// ─── INIT ───
+function init(){
+  loadState();
+  renderRoster();
+  renderFeed();
+  renderQuickCopy();
+  updateStats();
+  startClock();
+  startRadio();
+  setupKeys();
+  // seed with welcome message if empty
+  if(messages.length === 0){
+    addMessage({
+      from:'FORGE COMMS HUB (System)',role:'Relay Command Center',
+      to:'Jordan Lutz',type:'BROADCAST',priority:'normal',
+      bluf:'Comms Hub is online. Relay folders created at C:\\FORGE\\RELAY\\. All 10 builder channels open. Paste incoming builder output in the right panel to parse. Compose and broadcast from the bottom bar.',
+      body:'Welcome to the Forge Comms Hub.\n\nThis is your relay command center. Every message between builders flows through here.\n\nWorkflow:\n1. Builder gives you output → paste in "Parse Incoming" → click PARSE\n2. Hub auto-detects sender from Forge Comms Standard header\n3. Compose new messages with the bottom bar\n4. Click "Copy Formatted" on any message → paste into target conversation\n5. BROADCAST TO ALL generates text you can paste everywhere\n\nRelay folders are live:\n  C:\\FORGE\\RELAY\\BROADCAST\\\n  C:\\FORGE\\RELAY\\INBOX\\<builder>\\\n  C:\\FORGE\\RELAY\\OUTBOX\\<builder>\\\n\nThree rules: Sign everything. Write for broadcast. Research first.\n\nPress Ctrl+H for full help.',
+      signature:'— FORGE COMMS HUB v1.0',
+      timestamp:new Date()
+    });
+  }
+}
+
+// ─── CLOCK ───
+function startClock(){
+  const el=document.getElementById('clock');
+  setInterval(()=>{
+    const d=new Date();
+    el.textContent=d.toLocaleTimeString('en-US',{hour12:false});
+  },1000);
+}
+
+// ─── ROSTER ───
+function renderRoster(){
+  const c=document.getElementById('rosterList');
+  c.innerHTML='';
+  BUILDERS.forEach(b=>{
+    const card=document.createElement('div');
+    card.className=`builder-card ${b.status} ${selectedBuilder===b.id?'selected':''}`;
+    const unread=messages.filter(m=>m.from.includes(b.name)&&!m.read).length;
+    card.innerHTML=`
+      <div class="bc-top">
+        <span class="bc-name" style="color:${b.color}">${b.name}</span>
+        <span class="bc-status">${b.status}</span>
+      </div>
+      <div class="bc-role">${b.role}</div>
+      <div class="bc-platform">${b.platform}</div>
+      <div class="bc-msgs">${unread?`<span class="bc-unread">${unread} unread</span>`:`${messages.filter(m=>m.from.includes(b.name)).length} msgs`}</div>
+    `;
+    card.onclick=()=>{
+      selectedBuilder=selectedBuilder===b.id?null:b.id;
+      renderRoster();
+      renderFeed();
+      document.getElementById('feedTitle').textContent=selectedBuilder?`${b.name} — ${b.role}`:'All Channels';
+    };
+    c.appendChild(card);
+  });
+}
+
+// ─── FEED ───
+function renderFeed(){
+  const c=document.getElementById('feed');
+  let filtered=messages.slice();
+  if(selectedBuilder){
+    const b=BUILDERS.find(x=>x.id===selectedBuilder);
+    filtered=filtered.filter(m=>m.from.includes(b.name)||m.to===b.name||m.to==='ALL BUILDERS');
+  }
+  if(feedFilter!=='all'){
+    filtered=filtered.filter(m=>m.type.toLowerCase().replace(' ','-')===feedFilter);
+  }
+  c.innerHTML='';
+  if(filtered.length===0){
+    c.innerHTML=`<div style="text-align:center;color:var(--dim);padding:40px;font-size:13px">No messages${feedFilter!=='all'?' matching filter':''}. Compose below or paste incoming on the right.</div>`;
+    return;
+  }
+  filtered.forEach(m=>{
+    const div=document.createElement('div');
+    div.className='msg';
+    const typeClass=m.type.toLowerCase().replace(' ','-');
+    const priClass=m.priority||'normal';
+    const time=m.timestamp instanceof Date?m.timestamp:new Date(m.timestamp);
+    const timeStr=time.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+    const dateStr=time.toLocaleDateString('en-CA');
+    div.innerHTML=`
+      ${priClass==='high'?'<div class="msg-priority"></div>':priClass==='low'?'<div class="msg-priority low"></div>':''}
+      <div class="msg-header">
+        <div>
+          <div class="msg-from">${m.from}</div>
+          <div style="font-size:10px;color:var(--dim);margin-top:2px">TO: ${m.to}</div>
+        </div>
+        <div class="msg-meta">
+          <span class="msg-type ${typeClass}">${m.type}</span>
+          <div style="margin-top:4px">${dateStr} ${timeStr}</div>
+        </div>
+      </div>
+      <div class="msg-bluf">${escHtml(m.bluf)}</div>
+      ${m.body?`<div class="msg-body" id="body-${m.id}">${escHtml(m.body)}</div>
+      <span class="msg-expand" onclick="toggleBody(${m.id})">Show more / less</span>`:''}
+      ${m.signature?`<div class="msg-signature">${escHtml(m.signature)}</div>`:''}
+      <div class="msg-actions">
+        <button class="msg-btn" onclick="copyMsgFormatted(${m.id})">Copy Formatted</button>
+        <button class="msg-btn" onclick="copyMsgPlain(${m.id})">Copy Plain</button>
+        <button class="msg-btn" onclick="forwardMsg(${m.id})">Forward To...</button>
+        <button class="msg-btn danger" onclick="deleteMsg(${m.id})">Delete</button>
+      </div>
+    `;
+    c.appendChild(div);
+    m.read=true;
+  });
+  c.scrollTop=c.scrollHeight;
+  renderRoster();
+}
+
+function toggleBody(id){
+  const el=document.getElementById('body-'+id);
+  if(el) el.classList.toggle('expanded');
+}
+
+function setFeedFilter(f,el){
+  feedFilter=f;
+  document.querySelectorAll('.feed-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderFeed();
+}
+
+// ─── ADD MESSAGE ───
+function addMessage(m){
+  m.id=++msgIdCounter;
+  m.read=false;
+  m.timestamp=m.timestamp||new Date();
+  messages.push(m);
+  saveState();
+  renderFeed();
+  updateStats();
+  playSound(m.type==='DIRECTIVE'?880:m.to==='ALL BUILDERS'?660:440);
+  showNotif(`${m.type} from ${m.from.split('(')[0].trim()}`);
+}
+
+// ─── COMPOSE ───
+function sendMessage(){
+  const from=document.getElementById('compFrom').value;
+  const to=document.getElementById('compTo').value;
+  const type=document.getElementById('compType').value;
+  const pri=document.getElementById('compPri').value;
+  const body=document.getElementById('compBody').value.trim();
+  if(!body){showNotif('Message body is empty');return;}
+  const lines=body.split('\n');
+  const bluf=lines[0];
+  const rest=lines.slice(1).join('\n').trim();
+  const builder=BUILDERS.find(b=>from.includes(b.name));
+  addMessage({
+    from,role:builder?builder.role:'Chief Systems Architect',
+    to,type,priority:pri,bluf,body:rest,
+    signature:builder?builder.sig:'— Jordan Lutz, Founder, Miskulin Technologies'
+  });
+  clearCompose();
+}
+
+function broadcastMessage(){
+  document.getElementById('compTo').value='ALL BUILDERS';
+  document.getElementById('compType').value='BROADCAST';
+  sendMessage();
+}
+
+function clearCompose(){
+  document.getElementById('compBody').value='';
+}
+
+function generateFormatted(){
+  const from=document.getElementById('compFrom').value;
+  const to=document.getElementById('compTo').value;
+  const type=document.getElementById('compType').value;
+  const body=document.getElementById('compBody').value.trim();
+  if(!body){showNotif('Write something first');return;}
+  const builder=BUILDERS.find(b=>from.includes(b.name));
+  const role=builder?builder.role:'Chief Systems Architect';
+  const sig=builder?builder.sig:'Jordan Lutz, Founder, Miskulin Technologies';
+  const now=new Date();
+  const dateStr=now.toLocaleDateString('en-CA')+' '+now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+  const lines=body.split('\n');
+  const bluf=lines[0];
+  const rest=lines.slice(1).join('\n').trim();
+  const formatted=`═══════════════════════════════════════════════════
+FROM: ${from}
+ROLE: ${role}
+DATE: ${dateStr}
+TO: ${to}
+TYPE: ${type}
+═══════════════════════════════════════════════════
+
+BLUF: ${bluf}
+
+${rest}
+
+───────────────────────────────────────────────────
+Signed: ${from.split('(')[0].trim()}, ${now.toLocaleDateString('en-CA')}
+${sig}
+───────────────────────────────────────────────────`;
+  document.getElementById('fmtOutput').textContent=formatted;
+  document.getElementById('fmtModal').classList.add('show');
+}
+
+function copyFormatted(){
+  const text=document.getElementById('fmtOutput').textContent;
+  navigator.clipboard.writeText(text).then(()=>showNotif('Copied formatted message to clipboard'));
+}
+
+function closeFmtModal(){
+  document.getElementById('fmtModal').classList.remove('show');
+}
+
+// ─── COPY MESSAGE ───
+function copyMsgFormatted(id){
+  const m=messages.find(x=>x.id===id);
+  if(!m) return;
+  const now=m.timestamp instanceof Date?m.timestamp:new Date(m.timestamp);
+  const dateStr=now.toLocaleDateString('en-CA')+' '+now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+  const text=`═══════════════════════════════════════════════════
+FROM: ${m.from}
+ROLE: ${m.role||''}
+DATE: ${dateStr}
+TO: ${m.to}
+TYPE: ${m.type}
+═══════════════════════════════════════════════════
+
+BLUF: ${m.bluf}
+
+${m.body||''}
+
+───────────────────────────────────────────────────
+Signed: ${m.from.split('(')[0].trim()}, ${now.toLocaleDateString('en-CA')}
+${m.signature||''}
+───────────────────────────────────────────────────`;
+  navigator.clipboard.writeText(text).then(()=>showNotif('Copied formatted message'));
+}
+
+function copyMsgPlain(id){
+  const m=messages.find(x=>x.id===id);
+  if(!m) return;
+  navigator.clipboard.writeText(`${m.bluf}\n\n${m.body||''}`).then(()=>showNotif('Copied plain text'));
+}
+
+function forwardMsg(id){
+  const m=messages.find(x=>x.id===id);
+  if(!m) return;
+  document.getElementById('compBody').value=`[FWD from ${m.from.split('(')[0].trim()}] ${m.bluf}\n\n${m.body||''}`;
+  document.getElementById('compType').value=m.type;
+  showNotif('Message loaded in compose bar — change TO and send');
+}
+
+function deleteMsg(id){
+  messages=messages.filter(x=>x.id!==id);
+  saveState();
+  renderFeed();
+  updateStats();
+  showNotif('Message deleted');
+}
+
+// ─── PARSE INCOMING ───
+function parseIncoming(){
+  const raw=document.getElementById('parseInput').value.trim();
+  if(!raw){showNotif('Paste builder output first');return;}
+  const result=document.getElementById('parseResult');
+  // Try to parse Forge Comms Standard header
+  const fromMatch=raw.match(/FROM:\s*(.+)/i);
+  const roleMatch=raw.match(/ROLE:\s*(.+)/i);
+  const toMatch=raw.match(/TO:\s*(.+)/i);
+  const typeMatch=raw.match(/TYPE:\s*(.+)/i);
+  const dateMatch=raw.match(/DATE:\s*(.+)/i);
+  const blufMatch=raw.match(/BLUF:\s*(.+)/i);
+  const sigMatch=raw.match(/Signed:\s*(.+)/i);
+
+  if(fromMatch){
+    // Structured message found
+    const from=fromMatch[1].trim();
+    const role=roleMatch?roleMatch[1].trim():'';
+    const to=toMatch?toMatch[1].trim():'ALL BUILDERS';
+    const type=typeMatch?typeMatch[1].trim():'REPORT';
+    const bluf=blufMatch?blufMatch[1].trim():'(no BLUF)';
+
+    // Extract body — everything between BLUF line and signature
+    let body='';
+    const blufIdx=raw.indexOf(bluf);
+    const sigIdx=raw.indexOf('───────');
+    if(blufIdx>-1 && sigIdx>-1){
+      body=raw.substring(blufIdx+bluf.length,sigIdx).trim();
+    }else if(blufIdx>-1){
+      body=raw.substring(blufIdx+bluf.length).trim();
+    }
+
+    const sig=sigMatch?sigMatch[1].trim():'';
+
+    result.className='parse-result show';
+    result.innerHTML=`
+      <div class="parse-field"><span class="parse-label">FROM:</span> ${escHtml(from)}</div>
+      <div class="parse-field"><span class="parse-label">ROLE:</span> ${escHtml(role)}</div>
+      <div class="parse-field"><span class="parse-label">TO:</span> ${escHtml(to)}</div>
+      <div class="parse-field"><span class="parse-label">TYPE:</span> ${escHtml(type)}</div>
+      <div style="margin-top:6px;color:var(--accent)">Parsed successfully. Adding to feed.</div>
+    `;
+    addMessage({from,role,to,type,bluf,body,signature:sig,priority:'normal'});
+    document.getElementById('parseInput').value='';
+  }else{
+    // Unstructured — try to identify builder from content
+    let detectedFrom='Unknown Builder';
+    let detectedSig='';
+    for(const b of BUILDERS){
+      if(raw.includes(b.name)||raw.toLowerCase().includes(b.id)){
+        detectedFrom=`${b.name} (${b.platform})`;
+        detectedSig=b.sig;
+        break;
+      }
+    }
+    // Also check for Hansen-style signatures
+    if(raw.includes('Dr. Hansen')||raw.includes('Hansen')){
+      detectedFrom='Dr. Hansen (Gemini)';
+      detectedSig=BUILDERS.find(b=>b.id==='hansen').sig;
+    }
+
+    result.className='parse-result show';
+    result.innerHTML=`
+      <div style="color:var(--warn);margin-bottom:4px">No Forge Comms Standard header detected.</div>
+      <div class="parse-field"><span class="parse-label">Detected:</span> ${escHtml(detectedFrom)}</div>
+      <div style="margin-top:4px;color:var(--dim)">Adding as unstructured REPORT. You can edit after.</div>
+    `;
+    const firstLine=raw.split('\n')[0].substring(0,200);
+    const rest=raw.split('\n').slice(1).join('\n');
+    addMessage({
+      from:detectedFrom,role:'',to:'Jordan',type:'REPORT',
+      bluf:firstLine,body:rest,signature:detectedSig,priority:'normal'
+    });
+    document.getElementById('parseInput').value='';
+  }
+}
+
+// ─── QUICK COPY ───
+function renderQuickCopy(){
+  const c=document.getElementById('quickCopyGrid');
+  c.innerHTML='';
+  BUILDERS.forEach(b=>{
+    const btn=document.createElement('button');
+    btn.className='qc-btn';
+    btn.textContent=b.name;
+    btn.title=`Copy boot instruction for ${b.name}`;
+    btn.onclick=()=>{
+      const bootText=`═══════════════════════════════════════════════════
+FROM: Jordan Lutz (Human — Founder)
+ROLE: Chief Systems Architect
+DATE: ${new Date().toLocaleDateString('en-CA')} ${new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false})}
+TO: ${b.name}
+TYPE: DIRECTIVE
+═══════════════════════════════════════════════════
+
+BLUF: Check your relay inbox and broadcast folder for messages. Read them before starting work.
+
+On boot, read these files:
+1. C:\\FORGE\\RELAY\\BROADCAST\\ — Messages for ALL builders
+2. C:\\FORGE\\RELAY\\INBOX\\${b.id}\\ — Messages specifically for you
+
+When you produce output for other builders, format it with the Forge Comms Standard header:
+- FROM: ${b.name} (${b.platform})
+- ROLE: ${b.role}
+- DATE: [current date and time]
+- TO: [ALL BUILDERS or specific builder name]
+- TYPE: [REPORT / DIRECTIVE / BUILD LOG / QUESTION]
+- BLUF: [2-3 sentence summary]
+- Sign with your signature: ${b.sig}
+
+Read the full protocol: C:\\FORGE\\HOME\\glitch\\tools\\FORGE-COMMS-PROTOCOL-GLITCH-20260320.md
+
+───────────────────────────────────────────────────
+Jordan Lutz, Founder, Miskulin Technologies
+───────────────────────────────────────────────────`;
+      navigator.clipboard.writeText(bootText).then(()=>{
+        btn.classList.add('copied');
+        btn.textContent='Copied!';
+        setTimeout(()=>{btn.classList.remove('copied');btn.textContent=b.name;},1500);
+      });
+    };
+    c.appendChild(btn);
+  });
+}
+
+// ─── TEMPLATES ───
+function useTemplate(t){
+  const body=document.getElementById('compBody');
+  const from=document.getElementById('compFrom');
+  const to=document.getElementById('compTo');
+  const type=document.getElementById('compType');
+  from.value='Jordan Lutz (Human — Founder)';
+  to.value='ALL BUILDERS';
+  switch(t){
+    case 'status':
+      type.value='DIRECTIVE';
+      body.value='Status check — all builders report current task, progress, and blockers.\n\nReply with:\n1. What you are working on\n2. Percent complete\n3. Any blockers or questions\n4. What you plan to do next';
+      break;
+    case 'directive':
+      type.value='DIRECTIVE';
+      body.value='[WRITE YOUR DIRECTIVE HERE]\n\nAction required from: [specific builder or ALL]\nDeadline: [if any]\nContext: [why this matters]';
+      break;
+    case 'protocol':
+      type.value='BROADCAST';
+      body.value='Protocol update — read and implement immediately.\n\n[DESCRIBE THE PROTOCOL CHANGE]';
+      break;
+    case 'comms-standard':
+      type.value='BROADCAST';
+      body.value='Reminder: All output must use the Forge Comms Standard.\n\nEvery message needs:\n1. Header: FROM, ROLE, DATE, TO, TYPE\n2. BLUF: 2-3 sentence summary first\n3. Signature: Your name and motto\n\nFull spec: C:\\FORGE\\HOME\\glitch\\tools\\FORGE-COMMS-PROTOCOL-GLITCH-20260320.md';
+      break;
+    case 'boot-check':
+      type.value='DIRECTIVE';
+      body.value='On boot, check your relay folders for messages:\n\n1. C:\\FORGE\\RELAY\\BROADCAST\\ — Messages for ALL builders\n2. C:\\FORGE\\RELAY\\INBOX\\[your-name]\\ — Messages for you specifically\n\nRead all messages before starting work. Acknowledge receipt.';
+      break;
+  }
+}
+
+// ─── STATS ───
+function updateStats(){
+  document.getElementById('statTotal').textContent=messages.length;
+  document.getElementById('statBroadcast').textContent=messages.filter(m=>m.to==='ALL BUILDERS').length;
+  document.getElementById('statDirect').textContent=messages.filter(m=>m.to!=='ALL BUILDERS').length;
+  document.getElementById('statBuilders').textContent=BUILDERS.filter(b=>b.status==='active').length;
+}
+
+// ─── RADIO VISUALIZER ───
+function startRadio(){
+  const canvas=document.getElementById('radioCanvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  let t=0;
+  function draw(){
+    ctx.fillStyle='rgba(26,26,37,0.3)';
+    ctx.fillRect(0,0,W,H);
+    // draw waveform
+    ctx.beginPath();
+    ctx.strokeStyle='#00ff8844';
+    ctx.lineWidth=1;
+    for(let x=0;x<W;x++){
+      const base=Math.sin(x*0.05+t)*8;
+      const noise=(Math.random()-0.5)*4;
+      const signal=messages.length>0?Math.sin(x*0.02+t*2)*12*Math.sin(t*0.5):0;
+      const y=H/2+base+noise+signal;
+      x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // accent line
+    ctx.beginPath();
+    ctx.strokeStyle='#00ff88';
+    ctx.lineWidth=1.5;
+    for(let x=0;x<W;x++){
+      const y=H/2+Math.sin(x*0.03+t*1.5)*6+Math.sin(x*0.08+t*3)*3;
+      x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    t+=0.03;
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+// ─── KEYS ───
+function setupKeys(){
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){
+      closeFmtModal();
+      document.getElementById('helpOverlay').classList.remove('show');
+      return;
+    }
+    if(e.ctrlKey&&e.key==='h'){e.preventDefault();toggleHelp();return;}
+    if(e.ctrlKey&&e.shiftKey&&e.key==='Enter'){e.preventDefault();broadcastMessage();return;}
+    if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();sendMessage();return;}
+    // number keys for builder select (only when not in textarea/input)
+    if(document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='SELECT'){
+      const b=BUILDERS.find(x=>x.key===e.key);
+      if(b){
+        selectedBuilder=selectedBuilder===b.id?null:b.id;
+        renderRoster();
+        renderFeed();
+        document.getElementById('feedTitle').textContent=selectedBuilder?`${b.name} — ${b.role}`:'All Channels';
+      }
+    }
+  });
+}
+
+// ─── HELP ───
+function toggleHelp(){
+  document.getElementById('helpOverlay').classList.toggle('show');
+}
+
+// ─── AUDIO ───
+function playSound(freq){
+  try{
+    const ac=new(window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator();
+    const g=ac.createGain();
+    o.connect(g);g.connect(ac.destination);
+    o.type='sine';o.frequency.value=freq;
+    g.gain.setValueAtTime(0.05,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.3);
+    o.start();o.stop(ac.currentTime+0.3);
+  }catch(e){}
+}
+
+// ─── NOTIFICATIONS ───
+function showNotif(text){
+  const n=document.createElement('div');
+  n.className='notif';
+  n.textContent=text;
+  document.body.appendChild(n);
+  setTimeout(()=>{n.classList.add('out');setTimeout(()=>n.remove(),300);},2000);
+}
+
+// ─── UTILS ───
+function escHtml(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+
+// ─── PERSISTENCE ───
+function saveState(){
+  try{localStorage.setItem('forge-comms-hub',JSON.stringify({messages,msgIdCounter}));}catch(e){}
+}
+function loadState(){
+  try{
+    const s=JSON.parse(localStorage.getItem('forge-comms-hub'));
+    if(s){messages=s.messages||[];msgIdCounter=s.msgIdCounter||0;}
+  }catch(e){}
+}
+
+// ─── BOOT ───
+init();
+</script>
+</body>
+</html>

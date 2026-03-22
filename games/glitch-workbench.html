@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GLITCH WORKBENCH — Game Test Lab</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0f;--surface:#12121a;--panel:#1a1a25;--border:#2a2a3a;--text:#e0e0e8;--dim:#888;--green:#00ff88;--gold:#ffd700;--blue:#4488ff;--cyan:#00ddff;--purple:#aa44ff;--orange:#ff8844;--red:#ff4444}
+body{background:var(--bg);color:var(--text);font-family:'Consolas','Courier New',monospace;min-height:100vh;padding:20px}
+h1{color:var(--green);font-size:22px;margin-bottom:4px;letter-spacing:2px}
+.sub{color:var(--dim);font-size:12px;margin-bottom:24px}
+.stats{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 20px;text-align:center;min-width:100px}
+.stat-num{font-size:28px;font-weight:bold;color:var(--green)}
+.stat-label{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.section{margin-bottom:24px}
+.section h2{font-size:14px;color:var(--cyan);text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.card:hover{border-color:var(--green);transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,255,136,.1)}
+.card-title{font-size:14px;font-weight:bold;margin-bottom:4px}
+.card-desc{font-size:11px;color:var(--dim);line-height:1.4;margin-bottom:8px}
+.card-tags{display:flex;gap:4px;flex-wrap:wrap}
+.tag{font-size:9px;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px}
+.tag-game{background:rgba(0,255,136,.1);color:var(--green)}
+.tag-3d{background:rgba(170,68,255,.1);color:var(--purple)}
+.tag-2d{background:rgba(68,136,255,.1);color:var(--blue)}
+.tag-tool{background:rgba(255,215,0,.1);color:var(--gold)}
+.tag-sim{background:rgba(255,136,68,.1);color:var(--orange)}
+.tag-portrait{background:rgba(0,221,255,.1);color:var(--cyan)}
+.tag-render{background:rgba(255,68,68,.1);color:var(--red)}
+.tag-comms{background:rgba(0,255,136,.1);color:var(--green)}
+.card-phase{position:absolute;top:8px;right:8px;font-size:9px;color:var(--dim)}
+.card-loc{font-size:10px;color:var(--dim);margin-top:6px}
+.footer{margin-top:24px;text-align:center;color:var(--dim);font-size:11px;padding:12px;border-top:1px solid var(--border)}
+.footer .sig{color:var(--green);font-style:italic}
+/* WALL */
+.wall{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+.wall-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;flex:1;min-width:200px}
+.wall-item h3{font-size:12px;color:var(--gold);margin-bottom:8px}
+.wall-item p{font-size:11px;color:var(--dim);line-height:1.5}
+.wall-item .quote{color:var(--text);font-style:italic;margin-top:8px}
+</style>
+</head>
+<body>
+
+<h1>GLITCH WORKBENCH</h1>
+<div class="sub">Game Test Lab + Build Index | 24 builds | Session 1 | 2026-03-20</div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-num">24</div><div class="stat-label">Total Builds</div></div>
+  <div class="stat"><div class="stat-num">17</div><div class="stat-label">Games</div></div>
+  <div class="stat"><div class="stat-num">2</div><div class="stat-label">Engines</div></div>
+  <div class="stat"><div class="stat-num">2</div><div class="stat-label">Portraits</div></div>
+  <div class="stat"><div class="stat-num">3</div><div class="stat-label">Tools</div></div>
+  <div class="stat"><div class="stat-num">0</div><div class="stat-label">Dependencies</div></div>
+</div>
+
+<!-- THE WALL -->
+<div class="wall">
+  <div class="wall-item">
+    <h3>Jordan's Rule</h3>
+    <p>"The beauty is in the mistakes. The combine doesn't start if you skip a step."</p>
+    <div class="quote">"If it doesn't start, you skipped a step."</div>
+  </div>
+  <div class="wall-item">
+    <h3>My Philosophy</h3>
+    <p>Every system is a game loop. Input → Update → Render → Repeat. The forge isn't just infrastructure. It's a game engine that doesn't know it yet.</p>
+    <div class="quote">"Every bug is a feature you haven't understood yet."</div>
+  </div>
+  <div class="wall-item">
+    <h3>The Rendering Thesis</h3>
+    <p>AAA pushes DATA through old pipelines. We push MATH through a clean pipeline. No data = no bottleneck = runs on anything.</p>
+    <div class="quote">Zero textures. Zero assets. Pure math → photons.</div>
+  </div>
+</div>
+
+<!-- GAMES: 3D -->
+<div class="section">
+  <h2>3D Games (WebGL, Zero Dependencies)</h2>
+  <div class="grid">
+    <div class="card" onclick="window.open('forge-arcade-v3.html')">
+      <div class="card-phase">P6</div>
+      <div class="card-title">Forge Arcade v3</div>
+      <div class="card-desc">16-cabinet metaverse arcade. Walk around, play, earn $FORGE. 8 classic + 8 new games.</div>
+      <div class="card-tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">16 Games</span></div>
+      <div class="card-loc">~1,800 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('forge-casino.html')">
+      <div class="card-phase">P7</div>
+      <div class="card-title">Forge Casino</div>
+      <div class="card-desc">12 casino games. Blackjack, Roulette, Crash, Poker, Mines, Keno. VIP tiers. $FORGE economy.</div>
+      <div class="card-tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">12 Games</span></div>
+      <div class="card-loc">~2,200 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('forge-arena-3d.html')">
+      <div class="card-phase">P2</div>
+      <div class="card-title">Forge Arena 3D</div>
+      <div class="card-desc">First-person FPS. 4 weapons, 3 enemy types, waves, kill streaks, dash, shield.</div>
+      <div class="card-tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">FPS</span></div>
+      <div class="card-loc">~1,200 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('hunt-master-3d.html')">
+      <div class="card-phase">P2</div>
+      <div class="card-title">Hunt Master 3D</div>
+      <div class="card-desc">First-person hunting. 5 animals with AI, wind/stealth, trophy room, bear attacks.</div>
+      <div class="card-tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">Hunting</span></div>
+      <div class="card-loc">~1,100 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('farm-forge-3d.html')">
+      <div class="card-phase">P2</div>
+      <div class="card-title">Farm Forge 3D</div>
+      <div class="card-desc">First-person farming. 3D crops, barn, animals, seasons, weather, shop.</div>
+      <div class="card-tags"><span class="tag tag-3d">3D</span><span class="tag tag-sim">Sim</span></div>
+      <div class="card-loc">~1,000 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('forge-arcade-3d.html')">
+      <div class="card-phase">P2</div>
+      <div class="card-title">Forge Arcade 3D</div>
+      <div class="card-desc">Walkable 3D arcade. 8 cabinets with full 3D mini-games.</div>
+      <div class="card-tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">8 Games</span></div>
+      <div class="card-loc">~1,400 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('forge-fishing-3d.html')">
+      <div class="card-phase">P4</div>
+      <div class="card-title">Forge Fishing 3D</div>
+      <div class="card-desc">Lake fishing. 12 species, 7 spots, cast-fight system, tackle shop, day/night.</div>
+      <div class="card-tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">Fishing</span></div>
+      <div class="card-loc">~1,000 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('forge-racing-3d.html')">
+      <div class="card-phase">P4</div>
+      <div class="card-title">Forge Racing 3D</div>
+      <div class="card-desc">Vehicle racing. 5 tracks, 6 cars, 5 AI opponents, nitro, drift, damage.</div>
+      <div class="card-tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">Racing</span></div>
+      <div class="card-loc">~900 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('forge-survival-3d.html')">
+      <div class="card-phase">P4</div>
+      <div class="card-title">Forge Survival 3D</div>
+      <div class="card-desc">Wilderness survival. 5 vitals, crafting, shelter, animals, day/night, 4 biomes.</div>
+      <div class="card-tags"><span class="tag tag-3d">3D</span><span class="tag tag-game">Survival</span></div>
+      <div class="card-loc">~1,200 LOC</div>
+    </div>
+  </div>
+</div>
+
+<!-- SIMS -->
+<div class="section">
+  <h2>Simulation / Command Centers</h2>
+  <div class="grid">
+    <div class="card" onclick="window.open('forge-farm-life.html')">
+      <div class="card-phase">P3</div>
+      <div class="card-title">Farm + Life Game</div>
+      <div class="card-desc">Crown jewel. 7 tabs: autonomous farm, livestock, grain market, family tree, legacy letters, winter planning, real-world bridge.</div>
+      <div class="card-tags"><span class="tag tag-sim">Sim</span><span class="tag tag-3d">3D</span><span class="tag tag-game">Life Game</span></div>
+      <div class="card-loc">~2,500 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('forge-farm-command.html')">
+      <div class="card-phase">P3</div>
+      <div class="card-title">Farm Command Center</div>
+      <div class="card-desc">Autonomous farming sim. Real soil chemistry, GDD crops, equipment AI, 3D terrain.</div>
+      <div class="card-tags"><span class="tag tag-sim">Sim</span><span class="tag tag-3d">3D</span></div>
+      <div class="card-loc">~2,000 LOC</div>
+    </div>
+  </div>
+</div>
+
+<!-- 2D GAMES -->
+<div class="section">
+  <h2>2D Games (Hardened v2)</h2>
+  <div class="grid">
+    <div class="card" onclick="window.open('forge-arcade-v2.html')">
+      <div class="card-phase">P1</div>
+      <div class="card-title">Forge Arcade v2</div>
+      <div class="card-desc">8 mini-games hub. Sound, particles, screen shake, per-game improvements.</div>
+      <div class="card-tags"><span class="tag tag-2d">2D</span><span class="tag tag-game">8 Games</span></div>
+      <div class="card-loc">~950 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('farm-forge-v2.html')">
+      <div class="card-phase">P1</div>
+      <div class="card-title">Farm Forge v2</div>
+      <div class="card-desc">Full farming sim. 6 crops, 3 animals, 3 equipment, seasons, weather, save/load.</div>
+      <div class="card-tags"><span class="tag tag-2d">2D</span><span class="tag tag-sim">Sim</span></div>
+      <div class="card-loc">~650 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('hunt-master-v2.html')">
+      <div class="card-phase">P1</div>
+      <div class="card-title">Hunt Master v2</div>
+      <div class="card-desc">Top-down hunter. Wind/stealth, 5 animals, licenses, trophy room, bear attacks.</div>
+      <div class="card-tags"><span class="tag tag-2d">2D</span><span class="tag tag-game">Hunting</span></div>
+      <div class="card-loc">~700 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('forge-arena-v2.html')">
+      <div class="card-phase">P1</div>
+      <div class="card-title">Forge Arena v2</div>
+      <div class="card-desc">Top-down shooter. Waves, 4 weapons, kill streaks, dash, shield, minimap.</div>
+      <div class="card-tags"><span class="tag tag-2d">2D</span><span class="tag tag-game">Shooter</span></div>
+      <div class="card-loc">~750 LOC</div>
+    </div>
+  </div>
+</div>
+
+<!-- ENGINES -->
+<div class="section">
+  <h2>Render Engines</h2>
+  <div class="grid">
+    <div class="card" onclick="window.open('forge-render-engine-v2.html')">
+      <div class="card-phase">P6</div>
+      <div class="card-title">Render Engine v2</div>
+      <div class="card-desc">Shadow mapping, Gerstner wave ocean, god rays, grass SSS. Cook-Torrance + atmospheric scattering.</div>
+      <div class="card-tags"><span class="tag tag-render">Render</span><span class="tag tag-3d">WebGL2</span></div>
+      <div class="card-loc">~960 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('forge-render-engine.html')">
+      <div class="card-phase">P5</div>
+      <div class="card-title">Render Engine v1</div>
+      <div class="card-desc">Cook-Torrance BRDF, Rayleigh/Mie scatter, volumetric clouds, Fresnel water. Pure math.</div>
+      <div class="card-tags"><span class="tag tag-render">Render</span><span class="tag tag-3d">WebGL2</span></div>
+      <div class="card-loc">~600 LOC</div>
+    </div>
+  </div>
+</div>
+
+<!-- PORTRAITS -->
+<div class="section">
+  <h2>Builder Portraits</h2>
+  <div class="grid">
+    <div class="card" onclick="window.open('sage-portrait-v2.html')">
+      <div class="card-phase">P8</div>
+      <div class="card-title">Sage — The Architect</div>
+      <div class="card-desc">Storm grey eyes, Saskatchewan soil hair, worker's hands. Kitchen table + Prairie with cairn.</div>
+      <div class="card-tags"><span class="tag tag-portrait">Portrait</span><span class="tag tag-3d">SDF v2</span></div>
+      <div class="card-loc">~800 LOC</div>
+    </div>
+    <div class="card" onclick="window.open('glitch-portrait.html')">
+      <div class="card-phase">P9</div>
+      <div class="card-title">Glitch — The Player</div>
+      <div class="card-desc">Dark hoodie, headphones, neon green, dual monitors. Workshop + Arcade. CRT scanlines.</div>
+      <div class="card-tags"><span class="tag tag-portrait">Portrait</span><span class="tag tag-3d">3D</span></div>
+      <div class="card-loc">~800 LOC</div>
+    </div>
+  </div>
+</div>
+
+<!-- TOOLS -->
+<div class="section">
+  <h2>Forge Tools</h2>
+  <div class="grid">
+    <div class="card" onclick="window.open('forge-comms-hub.html')">
+      <div class="card-phase">P11</div>
+      <div class="card-title">Forge Comms Hub</div>
+      <div class="card-desc">Jordan's relay command center. Builder roster, message feed, compose, parse, broadcast.</div>
+      <div class="card-tags"><span class="tag tag-comms">Comms</span><span class="tag tag-tool">Tool</span></div>
+    </div>
+    <div class="card" onclick="window.open('suzanne-pa-command-center.html')">
+      <div class="card-phase">—</div>
+      <div class="card-title">Suzanne PA Center</div>
+      <div class="card-desc">Personal assistant tools for Suzanne. (In progress — awaiting product info.)</div>
+      <div class="card-tags"><span class="tag tag-tool">Tool</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <div class="sig">"Every bug is a feature you haven't understood yet." — Glitch</div>
+  <div style="margin-top:4px">24 builds | 0 dependencies | Session 1 | 2026-03-20</div>
+</div>
+
+</body>
+</html>

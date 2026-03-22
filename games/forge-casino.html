@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FORGE CASINO — Walk the Floor · Earn $FORGE</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#fff}
+canvas{display:block}
+#wallet{position:absolute;top:10px;right:10px;background:linear-gradient(135deg,rgba(40,20,0,0.95),rgba(20,10,0,0.95));padding:12px 18px;border-radius:10px;border:1px solid #d4a;font-size:13px;text-align:right;z-index:10}
+#wallet .balance{color:#f80;font-size:24px;font-weight:bold;text-shadow:0 0 10px rgba(255,136,0,0.5)}
+#wallet .label{color:#a64;font-size:9px;text-transform:uppercase;letter-spacing:2px}
+#wallet .tier{color:#d4a;font-size:10px;margin-top:3px}
+#hud{position:absolute;top:10px;left:10px;background:rgba(10,5,0,0.85);padding:10px 14px;border-radius:8px;font-size:11px;line-height:1.8;border:1px solid rgba(212,170,100,0.2);z-index:10}
+#hud .t{color:#d4a;font-size:10px;text-transform:uppercase;letter-spacing:2px;margin-bottom:3px}
+#info{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:#553;font-size:11px;text-align:center;z-index:10}
+#game-overlay{display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:20;background:rgba(0,0,0,0.3)}
+#game-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(180deg,#1a0a00,#0a0500);border:2px solid #d4a;border-radius:12px;padding:0;overflow:hidden}
+#game-canvas{display:block}
+#game-hud{position:absolute;top:8px;left:50%;transform:translateX(-50%);display:flex;gap:16px;font-size:12px;z-index:25}
+#game-hud .gh{background:rgba(0,0,0,0.85);padding:4px 12px;border-radius:4px;border:1px solid #553}
+#game-hud .gh span{color:#f80}
+#game-exit{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:#664;font-size:11px;z-index:25}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="wallet">
+  <div class="label">$FORGE Casino Wallet</div>
+  <div class="balance" id="w-bal">100.000</div>
+  <div class="tier" id="w-tier">BRONZE</div>
+</div>
+
+<div id="hud">
+  <div class="t">Forge Casino</div>
+  <div id="h-prompt" style="color:#d4a">Walk the floor</div>
+  <div id="h-game" style="color:#886;font-size:10px"></div>
+</div>
+
+<div id="info">WASD Move · Mouse Look · E Play · Click to Lock Mouse</div>
+
+<div id="game-overlay">
+  <div id="game-panel">
+    <canvas id="game-canvas" width="500" height="420"></canvas>
+  </div>
+  <div id="game-hud"></div>
+  <div id="game-exit">ESC to leave table</div>
+</div>
+
+<script>
+// ========================================================================
+// FORGE CASINO — THE METAVERSE CASINO
+// ========================================================================
+// Walk the floor. Sit at tables. Play 12 casino games. Earn $FORGE.
+// No downloads. No accounts. No house edge screwing you.
+// Zero dependencies. Zero assets. Pure math casino.
+// Built by Glitch — Session 1
+// ========================================================================
+
+const C=document.getElementById('c');
+const GL=C.getContext('webgl2',{antialias:true,alpha:false});
+if(!GL){document.body.innerHTML='<h1 style="color:red;text-align:center;margin-top:40vh">WebGL2 required</h1>';throw 0}
+
+const GC=document.getElementById('game-canvas');
+const G=GC.getContext('2d');
+
+// ===== Audio =====
+let audioCtx;
+function initAudio(){if(!audioCtx)audioCtx=new AudioContext()}
+function playTone(f,d,t,v){if(!audioCtx)return;const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=t||'square';o.frequency.value=f;g.gain.setValueAtTime(v||0.08,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+d);o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+d)}
+function sfx(n){initAudio();const S={chip:[800,0.05,'sine',0.06],card:[300,0.04,'triangle',0.05],win:[880,0.25,'triangle',0.1],bigwin:[440,0.4,'triangle',0.12],lose:[150,0.2,'sawtooth',0.08],spin:[600,0.15,'sine',0.05],click:[500,0.03,'square',0.04],ding:[1200,0.1,'sine',0.08],crash:[80,0.5,'sawtooth',0.15],cashout:[660,0.15,'triangle',0.1]};if(S[n])playTone(...S[n])}
+
+// ===== $FORGE Economy =====
+let forgeBalance=parseFloat(localStorage.getItem('forge_casino_bal')||'100'); // Start with 100
+let totalEarned=parseFloat(localStorage.getItem('forge_casino_earned')||'0');
+let totalWagered=parseFloat(localStorage.getItem('forge_casino_wagered')||'0');
+let highScores=JSON.parse(localStorage.getItem('forge_casino_scores')||'{}');
+
+function saveState(){
+  localStorage.setItem('forge_casino_bal',forgeBalance.toFixed(6));
+  localStorage.setItem('forge_casino_earned',totalEarned.toFixed(6));
+  localStorage.setItem('forge_casino_wagered',totalWagered.toFixed(6));
+  localStorage.setItem('forge_casino_scores',JSON.stringify(highScores));
+}
+
+function getTier(){
+  if(totalEarned>=10000) return {name:'DIAMOND',color:'#8cf'};
+  if(totalEarned>=5000) return {name:'PLATINUM',color:'#ccc'};
+  if(totalEarned>=1000) return {name:'GOLD',color:'#fd0'};
+  if(totalEarned>=100) return {name:'SILVER',color:'#aaa'};
+  return {name:'BRONZE',color:'#c84'};
+}
+
+function updateWallet(){
+  document.getElementById('w-bal').textContent=forgeBalance.toFixed(3);
+  const tier=getTier();
+  const el=document.getElementById('w-tier');
+  el.textContent=tier.name;el.style.color=tier.color;
+}
+
+function addForge(amount){
+  forgeBalance+=amount;
+  if(amount>0)totalEarned+=amount;
+  saveState();updateWallet();
+}
+
+// ===== Shaders =====
+const VS=`#version 300 es
+layout(location=0)in vec3 aP;layout(location=1)in vec3 aN;layout(location=2)in vec4 aC;
+uniform mat4 uP,uV,uM;out vec3 vW,vN;out vec4 vC;out float vD;
+void main(){vec4 w=uM*vec4(aP,1);vW=w.xyz;vN=normalize(mat3(uM)*aN);vC=aC;vD=length(w.xyz-inverse(uV)[3].xyz);gl_Position=uP*uV*w;}`;
+
+const FS=`#version 300 es
+precision highp float;
+in vec3 vW,vN;in vec4 vC;in float vD;
+uniform vec3 uEye;uniform float uTime;
+out vec4 fc;
+void main(){
+  vec3 N=normalize(vN),V=normalize(uEye-vW);
+  vec3 col=vC.rgb;
+  if(vC.a>0.98){
+    float pulse=0.8+0.2*sin(uTime*2.0+vW.x*0.3+vW.z*0.2);
+    fc=vec4(col*pulse*1.8,1);return;
+  }
+  // Multiple point lights for casino atmosphere
+  vec3 lit=col*0.08; // dim ambient
+  // Warm overhead lights
+  float lights=0.0;
+  for(float i=-20.0;i<=20.0;i+=10.0){
+    for(float j=-15.0;j<=15.0;j+=10.0){
+      vec3 lp=vec3(i,6.0,j);
+      vec3 ld=lp-vW;
+      float dist=length(ld);
+      float atten=1.0/(1.0+dist*0.08+dist*dist*0.01);
+      float NdL=max(dot(N,normalize(ld)),0.0);
+      lit+=col*vec3(1.0,0.85,0.6)*NdL*atten*0.7;
+    }
+  }
+  // Specular
+  vec3 L=normalize(vec3(0.3,1.0,0.2));
+  vec3 H=normalize(V+L);
+  float spec=pow(max(dot(N,H),0.0),32.0)*0.15;
+  lit+=vec3(1.0,0.9,0.7)*spec;
+  // Fog
+  float fog=1.0-exp(-vD*0.012);
+  lit=mix(lit,vec3(0.03,0.015,0.005),fog);
+  lit=pow(lit,vec3(1.0/2.2));
+  fc=vec4(lit,1);
+}`;
+
+function mkS(s,t){const sh=GL.createShader(t);GL.shaderSource(sh,s);GL.compileShader(sh);if(!GL.getShaderParameter(sh,GL.COMPILE_STATUS))console.error(GL.getShaderInfoLog(sh));return sh}
+function mkP(v,f){const p=GL.createProgram();GL.attachShader(p,mkS(v,GL.VERTEX_SHADER));GL.attachShader(p,mkS(f,GL.FRAGMENT_SHADER));GL.linkProgram(p);return p}
+const prog=mkP(VS,FS);
+const uP=GL.getUniformLocation(prog,'uP'),uV=GL.getUniformLocation(prog,'uV'),uM=GL.getUniformLocation(prog,'uM');
+const uEye=GL.getUniformLocation(prog,'uEye'),uTime_=GL.getUniformLocation(prog,'uTime');
+GL.enable(GL.DEPTH_TEST);GL.enable(GL.CULL_FACE);
+
+// ===== M4 =====
+const M4={
+  id:()=>{const m=new Float32Array(16);m[0]=m[5]=m[10]=m[15]=1;return m},
+  persp:(f,a,n,r)=>{const m=new Float32Array(16),t=1/Math.tan(f/2);m[0]=t/a;m[5]=t;m[10]=(r+n)/(n-r);m[11]=-1;m[14]=2*r*n/(n-r);return m},
+  lookAt:(e,c,u)=>{const m=new Float32Array(16);let zx=e[0]-c[0],zy=e[1]-c[1],zz=e[2]-c[2],l=1/Math.sqrt(zx*zx+zy*zy+zz*zz)||1;zx*=l;zy*=l;zz*=l;let xx=u[1]*zz-u[2]*zy,xy=u[2]*zx-u[0]*zz,xz=u[0]*zy-u[1]*zx;l=1/Math.sqrt(xx*xx+xy*xy+xz*xz)||1;xx*=l;xy*=l;xz*=l;let yx=zy*xz-zz*xy,yy=zz*xx-zx*xz,yz=zx*xy-zy*xx;m[0]=xx;m[1]=yx;m[2]=zx;m[4]=xy;m[5]=yy;m[6]=zy;m[8]=xz;m[9]=yz;m[10]=zz;m[12]=-(xx*e[0]+xy*e[1]+xz*e[2]);m[13]=-(yx*e[0]+yy*e[1]+yz*e[2]);m[14]=-(zx*e[0]+zy*e[1]+zz*e[2]);m[15]=1;return m},
+  mul:(a,b)=>{const m=new Float32Array(16);for(let i=0;i<4;i++)for(let j=0;j<4;j++){m[i*4+j]=0;for(let k=0;k<4;k++)m[i*4+j]+=a[k*4+j]*b[i*4+k]}return m},
+  trans:(m,x,y,z)=>{const t=M4.id();t[12]=x;t[13]=y;t[14]=z;return M4.mul(m,t)},
+  rotY:(m,a)=>{const r=M4.id(),c=Math.cos(a),s=Math.sin(a);r[0]=c;r[2]=s;r[8]=-s;r[10]=c;return M4.mul(m,r)}
+};
+
+// ===== Mesh =====
+function mkMesh(v,n,c,idx){
+  const vao=GL.createVertexArray();GL.bindVertexArray(vao);
+  const pb=GL.createBuffer();GL.bindBuffer(GL.ARRAY_BUFFER,pb);GL.bufferData(GL.ARRAY_BUFFER,new Float32Array(v),GL.STATIC_DRAW);GL.enableVertexAttribArray(0);GL.vertexAttribPointer(0,3,GL.FLOAT,false,0,0);
+  const nb=GL.createBuffer();GL.bindBuffer(GL.ARRAY_BUFFER,nb);GL.bufferData(GL.ARRAY_BUFFER,new Float32Array(n),GL.STATIC_DRAW);GL.enableVertexAttribArray(1);GL.vertexAttribPointer(1,3,GL.FLOAT,false,0,0);
+  const cb=GL.createBuffer();GL.bindBuffer(GL.ARRAY_BUFFER,cb);GL.bufferData(GL.ARRAY_BUFFER,new Float32Array(c),GL.STATIC_DRAW);GL.enableVertexAttribArray(2);GL.vertexAttribPointer(2,4,GL.FLOAT,false,0,0);
+  const ib=GL.createBuffer();GL.bindBuffer(GL.ELEMENT_ARRAY_BUFFER,ib);GL.bufferData(GL.ELEMENT_ARRAY_BUFFER,new Uint32Array(idx),GL.STATIC_DRAW);
+  GL.bindVertexArray(null);return{vao,count:idx.length};
+}
+function draw(mesh,model){GL.uniformMatrix4fv(uM,false,model);GL.bindVertexArray(mesh.vao);GL.drawElements(GL.TRIANGLES,mesh.count,GL.UNSIGNED_INT,0)}
+
+function mkBox(w,h,d,r,g,b,a){
+  a=a||1;const hw=w/2,hh=h/2,hd=d/2;
+  const v=[-hw,-hh,hd,hw,-hh,hd,hw,hh,hd,-hw,hh,hd,-hw,-hh,-hd,-hw,hh,-hd,hw,hh,-hd,hw,-hh,-hd,-hw,hh,-hd,-hw,hh,hd,hw,hh,hd,hw,hh,-hd,-hw,-hh,-hd,hw,-hh,-hd,hw,-hh,hd,-hw,-hh,hd,hw,-hh,-hd,hw,hh,-hd,hw,hh,hd,hw,-hh,hd,-hw,-hh,-hd,-hw,-hh,hd,-hw,hh,hd,-hw,hh,-hd];
+  const n=[0,0,1,0,0,1,0,0,1,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,1,0,0,1,0,0,1,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,1,0,0,1,0,0,1,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0];
+  const c=[];for(let i=0;i<24;i++)c.push(r,g,b,a);
+  return mkMesh(v,n,c,[0,1,2,0,2,3,4,5,6,4,6,7,8,9,10,8,10,11,12,13,14,12,14,15,16,17,18,16,18,19,20,21,22,20,22,23]);
+}
+
+// ===== 12 CASINO GAMES =====
+const GAMES=[
+  {id:'blackjack',name:'BLACKJACK',color:[0.1,0.5,0.2],type:'table',x:-15,z:-8,rot:0},
+  {id:'roulette',name:'ROULETTE',color:[0.6,0.1,0.1],type:'table',x:-8,z:-8,rot:0},
+  {id:'poker',name:'VIDEO POKER',color:[0.2,0.2,0.6],type:'machine',x:-1,z:-8,rot:0},
+  {id:'baccarat',name:'BACCARAT',color:[0.5,0.3,0.1],type:'table',x:6,z:-8,rot:0},
+  {id:'crash',name:'FORGE CRASH',color:[1,0.3,0],type:'stage',x:13,z:-8,rot:0},
+  {id:'wheel',name:'MEGA WHEEL',color:[0.8,0.1,0.6],type:'stage',x:-15,z:8,rot:Math.PI},
+  {id:'slots',name:'FORGE SLOTS',color:[1,0.8,0],type:'machine',x:-8,z:8,rot:Math.PI},
+  {id:'hilo',name:'HI-LO',color:[0,0.7,0.7],type:'machine',x:-1,z:8,rot:Math.PI},
+  {id:'mines',name:'FORGE MINES',color:[0.8,0.8,0],type:'machine',x:6,z:8,rot:Math.PI},
+  {id:'keno',name:'FORGE KENO',color:[0.3,0.8,0.3],type:'machine',x:13,z:8,rot:Math.PI},
+  {id:'dice',name:'FORGE DICE',color:[1,1,1],type:'table',x:-12,z:0,rot:Math.PI/2},
+  {id:'scratch',name:'SCRATCH CARD',color:[0.9,0.6,0.1],type:'machine',x:12,z:0,rot:-Math.PI/2}
+];
+
+// ===== BUILD CASINO FLOOR =====
+const RW=50,RD=40,RH=7;
+const floor=mkBox(RW,0.3,RD, 0.08,0.03,0.01);
+const ceiling=mkBox(RW,0.2,RD, 0.04,0.02,0.01);
+const wallL=mkBox(0.4,RH,RD, 0.06,0.03,0.02);
+const wallR=mkBox(0.4,RH,RD, 0.06,0.03,0.02);
+const wallB=mkBox(RW,RH,0.4, 0.06,0.03,0.02);
+const wallF=mkBox(RW,RH,0.4, 0.06,0.03,0.02);
+
+// Casino carpet pattern (gold lines on floor)
+const carpetLines=[];
+for(let i=-20;i<=20;i+=5){
+  carpetLines.push(mkBox(0.08,0.01,RD-2, 0.4,0.25,0.05,0.99));
+  carpetLines.push({mesh:mkBox(RW-2,0.01,0.08, 0.4,0.25,0.05,0.99),isZ:true});
+}
+
+// Chandeliers (emissive gold boxes)
+const chandeliers=[];
+for(let x=-15;x<=15;x+=10){
+  for(let z=-10;z<=10;z+=10){
+    chandeliers.push({x,z,mesh:mkBox(1.5,0.3,1.5, 1,0.8,0.3,0.99)});
+  }
+}
+
+// Game stations
+const stations=[];
+for(const game of GAMES){
+  const tableColor = game.type==='table'?[0.1,0.3,0.15]:[0.15,0.08,0.05];
+  const body = mkBox(2.5,1.2,1.5, ...tableColor);
+  const top = game.type==='table'
+    ? mkBox(2.8,0.1,1.8, 0.05,0.25,0.1) // green felt
+    : mkBox(2.2,1.6,0.2, 0.05,0.05,0.08); // screen
+  const sign = mkBox(1.8,0.3,0.1, game.color[0],game.color[1],game.color[2],0.99);
+  stations.push({...game,body,top,sign});
+}
+
+// Rope barriers (VIP aesthetic)
+const pillars=[];
+for(let x=-22;x<=22;x+=4){
+  pillars.push({x,z:-14,mesh:mkBox(0.2,1.5,0.2, 0.5,0.35,0.1)});
+  pillars.push({x,z:14,mesh:mkBox(0.2,1.5,0.2, 0.5,0.35,0.1)});
+}
+
+// ===== PLAYER =====
+let px=0,py=1.7,pz=0,yaw=Math.PI,pitch=0;
+let keys={},locked=false;
+let activeGame=null;
+let gameUpdate=null,gameKeyDown=null,gameClick=null;
+let gameTime=0;
+
+// ===== INPUT =====
+document.addEventListener('keydown',e=>{
+  keys[e.key.toLowerCase()]=true;
+  if(e.key==='Escape'&&activeGame){exitGame();e.preventDefault()}
+  if(e.key.toLowerCase()==='e'&&!activeGame)tryPlay();
+  if(activeGame&&gameKeyDown)gameKeyDown(e.key);
+});
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+C.addEventListener('click',()=>{if(!activeGame){C.requestPointerLock();initAudio()}});
+document.addEventListener('pointerlockchange',()=>locked=!!document.pointerLockElement);
+document.addEventListener('mousemove',e=>{if(!locked||activeGame)return;yaw-=e.movementX*0.002;pitch-=e.movementY*0.002;pitch=Math.max(-1.2,Math.min(1.2,pitch))});
+let gmx=0,gmy=0;
+GC.addEventListener('mousemove',e=>{const r=GC.getBoundingClientRect();gmx=(e.clientX-r.left)/r.width*500;gmy=(e.clientY-r.top)/r.height*420});
+GC.addEventListener('click',()=>{if(activeGame&&gameClick)gameClick(gmx,gmy)});
+
+function resize(){C.width=innerWidth;C.height=innerHeight;GL.viewport(0,0,C.width,C.height)}
+window.addEventListener('resize',resize);resize();
+
+function nearestStation(){
+  let best=null,bestD=4;
+  for(const s of stations){const d=Math.hypot(px-s.x,pz-s.z);if(d<bestD){bestD=d;best=s}}
+  return best;
+}
+
+function tryPlay(){
+  const s=nearestStation();if(!s)return;
+  sfx('chip');activeGame=s.id;
+  document.getElementById('game-overlay').style.display='block';
+  document.exitPointerLock();
+  startGame(s);
+}
+
+function exitGame(){
+  activeGame=null;gameUpdate=null;gameKeyDown=null;gameClick=null;
+  document.getElementById('game-overlay').style.display='none';
+  document.getElementById('game-hud').innerHTML='';
+  saveState();
+}
+
+function setHud(html){document.getElementById('game-hud').innerHTML=html}
+
+// ===== CARD DECK UTILS =====
+const SUITS=['♠','♥','♦','♣'];
+const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+function mkDeck(){const d=[];for(const s of SUITS)for(const r of RANKS)d.push({rank:r,suit:s});return d}
+function shuffle(d){for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]]}return d}
+function cardVal(c){if(c.rank==='A')return 11;if(['K','Q','J'].includes(c.rank))return 10;return parseInt(c.rank)}
+function drawCard(x,y,card,faceDown){
+  const isRed=card.suit==='♥'||card.suit==='♦';
+  G.fillStyle=faceDown?'#224':'#fff';
+  G.fillRect(x,y,45,65);G.strokeStyle='#888';G.lineWidth=1;G.strokeRect(x,y,45,65);
+  if(!faceDown){
+    G.fillStyle=isRed?'#e22':'#222';G.font='bold 14px Courier New';G.textAlign='left';
+    G.fillText(card.rank,x+4,y+16);G.fillText(card.suit,x+4,y+32);
+    G.textAlign='right';G.fillText(card.rank,x+41,y+55);
+  }else{
+    G.fillStyle='#448';G.fillRect(x+3,y+3,39,59);
+    G.strokeStyle='#669';G.lineWidth=0.5;
+    for(let i=0;i<5;i++){G.beginPath();G.moveTo(x+3,y+3+i*12);G.lineTo(x+42,y+3+i*12);G.stroke()}
+  }
+}
+
+// ===== START GAME DISPATCH =====
+function startGame(station){
+  G.fillStyle='#0a0500';G.fillRect(0,0,500,420);
+  const starters={blackjack:startBlackjack,roulette:startRoulette,poker:startPoker,baccarat:startBaccarat,crash:startCrash,wheel:startWheel,slots:startSlots,hilo:startHiLo,mines:startMines,keno:startKeno,dice:startDice,scratch:startScratch};
+  if(starters[station.id])starters[station.id]();
+}
+
+// ================================================================
+// GAME 1: BLACKJACK
+// ================================================================
+function startBlackjack(){
+  const s={deck:shuffle(mkDeck()),player:[],dealer:[],bet:5,phase:'bet',result:''};
+  function handVal(hand){
+    let v=0,aces=0;
+    for(const c of hand){v+=cardVal(c);if(c.rank==='A')aces++}
+    while(v>21&&aces>0){v-=10;aces--}
+    return v;
+  }
+  function deal(){
+    s.player=[s.deck.pop(),s.deck.pop()];
+    s.dealer=[s.deck.pop(),s.deck.pop()];
+    s.phase='play';s.result='';
+    if(handVal(s.player)===21){s.phase='done';checkWin();}
+    sfx('card');
+  }
+  function checkWin(){
+    const pv=handVal(s.player),dv=handVal(s.dealer);
+    if(pv>21){s.result='BUST';addForge(-s.bet);sfx('lose')}
+    else if(dv>21){s.result='DEALER BUST! +'+s.bet*2;addForge(s.bet*2);sfx('win')}
+    else if(pv>dv){s.result='WIN! +'+(pv===21?s.bet*2.5:s.bet*2);addForge(pv===21?s.bet*2.5:s.bet*2);sfx('win')}
+    else if(pv===dv){s.result='PUSH';addForge(s.bet);sfx('click')}
+    else{s.result='LOSE';addForge(-s.bet);sfx('lose')}
+    s.phase='done';
+  }
+  function dealerPlay(){
+    s.phase='dealer';
+    while(handVal(s.dealer)<17)s.dealer.push(s.deck.pop());
+    checkWin();
+  }
+  gameKeyDown=k=>{
+    if(s.phase==='bet'){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k===' '||k==='Enter'){if(s.bet<=forgeBalance)deal()}
+    }
+    if(s.phase==='play'){
+      if(k.toLowerCase()==='h'){s.player.push(s.deck.pop());sfx('card');if(handVal(s.player)>21){s.phase='done';checkWin()}}
+      if(k.toLowerCase()==='s')dealerPlay();
+      if(k.toLowerCase()==='d'&&s.player.length===2&&forgeBalance>=s.bet*2){s.bet*=2;s.player.push(s.deck.pop());sfx('card');if(handVal(s.player)>21){s.phase='done';checkWin()}else dealerPlay()}
+    }
+    if(s.phase==='done'&&(k===' '||k==='Enter')){
+      s.deck=shuffle(mkDeck());s.phase='bet';s.bet=5;s.result='';
+    }
+  };
+  gameUpdate=()=>{
+    G.fillStyle='#0a3a15';G.fillRect(0,0,500,420);
+    G.fillStyle='#d4a';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('BLACKJACK',250,25);
+    if(s.phase==='bet'){
+      G.fillStyle='#fff';G.font='14px Courier New';
+      G.fillText('BET: '+s.bet.toFixed(0)+' $FORGE',250,180);
+      G.fillText('↑/↓ Change Bet · SPACE Deal',250,210);
+      G.fillStyle='#886';G.font='11px Courier New';
+      G.fillText('Balance: '+forgeBalance.toFixed(3),250,240);
+    } else {
+      // Dealer
+      G.fillStyle='#cca';G.font='12px Courier New';G.textAlign='left';
+      G.fillText('DEALER ('+((s.phase==='play')?'?':handVal(s.dealer))+')',30,60);
+      for(let i=0;i<s.dealer.length;i++)drawCard(30+i*55,70,s.dealer[i],s.phase==='play'&&i===1);
+      // Player
+      G.fillText('YOU ('+handVal(s.player)+')',30,220);
+      for(let i=0;i<s.player.length;i++)drawCard(30+i*55,230,s.player[i],false);
+      // Controls
+      if(s.phase==='play'){
+        G.fillStyle='#4f8';G.font='13px Courier New';G.textAlign='center';
+        G.fillText('H = Hit · S = Stand · D = Double Down',250,340);
+      }
+      G.fillStyle='#888';G.textAlign='center';G.font='11px Courier New';
+      G.fillText('Bet: '+s.bet.toFixed(0)+' $FORGE',250,365);
+      if(s.result){
+        G.fillStyle=s.result.includes('WIN')||s.result.includes('BUST!')?'#4f8':'#f44';
+        G.font='bold 18px Courier New';G.fillText(s.result,250,395);
+        G.fillStyle='#888';G.font='11px Courier New';G.fillText('SPACE for new hand',250,415);
+      }
+    }
+  };
+}
+
+// ================================================================
+// GAME 2: ROULETTE
+// ================================================================
+function startRoulette(){
+  const s={bet:5,betType:'red',spinning:false,result:-1,angle:0,speed:0,message:'',lightningNums:[],lightningMult:[]};
+  const RED=[1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
+  const betTypes=['red','black','odd','even','1-18','19-36','1st12','2nd12','3rd12'];
+
+  function spin(){
+    if(s.spinning||s.bet>forgeBalance)return;
+    s.spinning=true;s.speed=15+Math.random()*10;s.message='';
+    // Lightning feature: pick 1-3 numbers with multipliers
+    s.lightningNums=[];s.lightningMult=[];
+    const numLightning=1+Math.floor(Math.random()*3);
+    for(let i=0;i<numLightning;i++){
+      const n=Math.floor(Math.random()*37);
+      if(!s.lightningNums.includes(n)){
+        s.lightningNums.push(n);
+        s.lightningMult.push([50,100,150,200,300,500][Math.floor(Math.random()*6)]);
+      }
+    }
+    sfx('spin');
+  }
+  function resolve(){
+    s.result=Math.floor(Math.random()*37); // 0-36
+    s.spinning=false;
+    let win=false,mult=1;
+    if(s.betType==='red'&&RED.includes(s.result))win=true;
+    if(s.betType==='black'&&s.result>0&&!RED.includes(s.result))win=true;
+    if(s.betType==='odd'&&s.result>0&&s.result%2===1)win=true;
+    if(s.betType==='even'&&s.result>0&&s.result%2===0)win=true;
+    if(s.betType==='1-18'&&s.result>=1&&s.result<=18)win=true;
+    if(s.betType==='19-36'&&s.result>=19&&s.result<=36)win=true;
+    if(s.betType==='1st12'&&s.result>=1&&s.result<=12){win=true;mult=3}
+    if(s.betType==='2nd12'&&s.result>=13&&s.result<=24){win=true;mult=3}
+    if(s.betType==='3rd12'&&s.result>=25&&s.result<=36){win=true;mult=3}
+    if(mult===1&&win)mult=2;
+    // Lightning bonus
+    const lIdx=s.lightningNums.indexOf(s.result);
+    if(lIdx>=0)mult=s.lightningMult[lIdx];
+    if(win){s.message='WIN! +'+(s.bet*mult).toFixed(1)+' $FORGE';addForge(s.bet*mult);sfx(mult>10?'bigwin':'win')}
+    else{s.message='No luck. -'+s.bet;addForge(-s.bet);sfx('lose')}
+  }
+  gameKeyDown=k=>{
+    if(!s.spinning){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k==='ArrowLeft'){const i=betTypes.indexOf(s.betType);s.betType=betTypes[(i-1+betTypes.length)%betTypes.length]}
+      if(k==='ArrowRight'){const i=betTypes.indexOf(s.betType);s.betType=betTypes[(i+1)%betTypes.length]}
+      if(k===' ')spin();
+    }
+  };
+  gameUpdate=(dt)=>{
+    if(s.spinning){s.angle+=s.speed*dt;s.speed*=0.98;if(s.speed<0.3)resolve()}
+    G.fillStyle='#1a0800';G.fillRect(0,0,500,420);
+    G.fillStyle='#d4a';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('LIGHTNING ROULETTE',250,25);
+    // Wheel visualization
+    G.save();G.translate(250,170);G.rotate(s.angle);
+    for(let i=0;i<37;i++){
+      const a=i/37*Math.PI*2;
+      G.fillStyle=i===0?'#0a0':RED.includes(i)?'#a00':'#222';
+      G.beginPath();G.moveTo(0,0);G.arc(0,0,90,a,a+Math.PI*2/37);G.fill();
+    }
+    G.restore();
+    // Pointer
+    G.fillStyle='#fff';G.beginPath();G.moveTo(250,75);G.lineTo(245,85);G.lineTo(255,85);G.closePath();G.fill();
+    // Lightning numbers
+    if(s.lightningNums.length){
+      G.fillStyle='#ff0';G.font='bold 11px Courier New';
+      G.fillText('⚡ LIGHTNING: '+s.lightningNums.map((n,i)=>n+'('+s.lightningMult[i]+'x)').join(' '),250,280);
+    }
+    // Result
+    if(s.result>=0&&!s.spinning){
+      const isRed=RED.includes(s.result);
+      G.fillStyle=s.result===0?'#0f0':isRed?'#f44':'#fff';
+      G.font='bold 24px Courier New';G.fillText(s.result,250,310);
+    }
+    // Bet
+    G.fillStyle='#cca';G.font='13px Courier New';
+    G.fillText('Bet: '+s.bet+' on '+s.betType.toUpperCase(),250,345);
+    G.fillStyle='#886';G.font='11px Courier New';
+    G.fillText('←/→ Bet Type · ↑/↓ Amount · SPACE Spin',250,365);
+    if(s.message){G.fillStyle=s.message.includes('WIN')?'#4f8':'#f44';G.font='bold 14px Courier New';G.fillText(s.message,250,395)}
+  };
+}
+
+// ================================================================
+// GAME 3: VIDEO POKER (Jacks or Better)
+// ================================================================
+function startPoker(){
+  const s={deck:[],hand:[],held:[false,false,false,false,false],bet:5,phase:'bet',result:'',payout:0};
+  const PAYOUTS={royal:250,straightFlush:50,four:25,fullHouse:9,flush:6,straight:4,three:3,twoPair:2,jacksOrBetter:1};
+  function evaluate(hand){
+    const ranks=hand.map(c=>RANKS.indexOf(c.rank));
+    const suits=hand.map(c=>c.suit);
+    const sorted=[...ranks].sort((a,b)=>a-b);
+    const isFlush=suits.every(s=>s===suits[0]);
+    const isStraight=sorted[4]-sorted[0]===4&&new Set(sorted).size===5||(sorted.join()=='0,1,2,3,12'); // A-2-3-4-5
+    const counts={};ranks.forEach(r=>counts[r]=(counts[r]||0)+1);
+    const vals=Object.values(counts).sort((a,b)=>b-a);
+    if(isFlush&&isStraight&&sorted[0]===8)return{name:'ROYAL FLUSH',mult:PAYOUTS.royal};
+    if(isFlush&&isStraight)return{name:'STRAIGHT FLUSH',mult:PAYOUTS.straightFlush};
+    if(vals[0]===4)return{name:'FOUR OF A KIND',mult:PAYOUTS.four};
+    if(vals[0]===3&&vals[1]===2)return{name:'FULL HOUSE',mult:PAYOUTS.fullHouse};
+    if(isFlush)return{name:'FLUSH',mult:PAYOUTS.flush};
+    if(isStraight)return{name:'STRAIGHT',mult:PAYOUTS.straight};
+    if(vals[0]===3)return{name:'THREE OF A KIND',mult:PAYOUTS.three};
+    if(vals[0]===2&&vals[1]===2)return{name:'TWO PAIR',mult:PAYOUTS.twoPair};
+    if(vals[0]===2){const pairRank=parseInt(Object.keys(counts).find(k=>counts[k]===2));if(pairRank>=9||pairRank===0)return{name:'JACKS OR BETTER',mult:PAYOUTS.jacksOrBetter}}
+    return{name:'',mult:0};
+  }
+  function dealNew(){s.deck=shuffle(mkDeck());s.hand=[s.deck.pop(),s.deck.pop(),s.deck.pop(),s.deck.pop(),s.deck.pop()];s.held=[false,false,false,false,false];s.phase='hold';s.result='';sfx('card')}
+  function drawPhase(){
+    for(let i=0;i<5;i++)if(!s.held[i])s.hand[i]=s.deck.pop();
+    const ev=evaluate(s.hand);
+    s.result=ev.name||'NO HAND';
+    s.payout=ev.mult*s.bet;
+    if(ev.mult>0){addForge(s.payout);sfx(ev.mult>=9?'bigwin':'win')}
+    else{addForge(-s.bet);sfx('lose')}
+    s.phase='done';
+  }
+  gameKeyDown=k=>{
+    if(s.phase==='bet'){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k===' ')dealNew();
+    }
+    if(s.phase==='hold'){
+      if(k>='1'&&k<='5'){const i=parseInt(k)-1;s.held[i]=!s.held[i];sfx('click')}
+      if(k===' ')drawPhase();
+    }
+    if(s.phase==='done'&&k===' '){s.phase='bet';s.bet=5}
+  };
+  gameUpdate=()=>{
+    G.fillStyle='#0a0a2a';G.fillRect(0,0,500,420);
+    G.fillStyle='#48f';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('VIDEO POKER — Jacks or Better',250,25);
+    // Pay table
+    G.font='10px Courier New';G.fillStyle='#886';
+    const pt=['Royal 250x','SF 50x','4Kind 25x','FH 9x','Flush 6x','Str 4x','3Kind 3x','2Pair 2x','J+ 1x'];
+    G.fillText(pt.join(' · '),250,45);
+    if(s.phase==='bet'){
+      G.fillStyle='#fff';G.font='14px Courier New';
+      G.fillText('BET: '+s.bet+' $FORGE',250,200);
+      G.fillText('SPACE to Deal',250,230);
+    } else {
+      for(let i=0;i<5;i++){
+        drawCard(50+i*85,120,s.hand[i],false);
+        if(s.held[i]){G.fillStyle='#f80';G.font='bold 12px Courier New';G.textAlign='center';G.fillText('HELD',92+i*85,200)}
+      }
+      if(s.phase==='hold'){
+        G.fillStyle='#4f8';G.font='13px Courier New';G.textAlign='center';
+        G.fillText('1-5 Hold/Release · SPACE Draw',250,240);
+      }
+      if(s.phase==='done'){
+        G.fillStyle=s.payout>0?'#4f8':'#f44';G.font='bold 18px Courier New';G.textAlign='center';
+        G.fillText(s.result,250,270);
+        if(s.payout>0)G.fillText('+'+s.payout.toFixed(1)+' $FORGE',250,300);
+        G.fillStyle='#888';G.font='11px Courier New';G.fillText('SPACE for new hand',250,330);
+      }
+    }
+  };
+}
+
+// ================================================================
+// GAME 4: BACCARAT
+// ================================================================
+function startBaccarat(){
+  const s={deck:shuffle(mkDeck().concat(mkDeck())),player:[],banker:[],bet:5,betOn:'player',phase:'bet',result:''};
+  function bVal(hand){return hand.reduce((s,c)=>{let v=cardVal(c);if(v>=10)v=0;return(s+v)%10},0)}
+  function play(){
+    s.player=[s.deck.pop(),s.deck.pop()];s.banker=[s.deck.pop(),s.deck.pop()];
+    let pv=bVal(s.player),bv=bVal(s.banker);
+    // Third card rules (simplified)
+    if(pv<=5)s.player.push(s.deck.pop());
+    pv=bVal(s.player);
+    if(bv<=5)s.banker.push(s.deck.pop());
+    bv=bVal(s.banker);
+    if(pv>bv&&s.betOn==='player'){s.result='PLAYER WINS! +'+(s.bet*2);addForge(s.bet*2);sfx('win')}
+    else if(bv>pv&&s.betOn==='banker'){s.result='BANKER WINS! +'+(s.bet*1.95);addForge(s.bet*1.95);sfx('win')}
+    else if(pv===bv&&s.betOn==='tie'){s.result='TIE! +'+(s.bet*8);addForge(s.bet*8);sfx('bigwin')}
+    else if(pv===bv){s.result='TIE — Push';addForge(s.bet);sfx('click')}
+    else{s.result='LOSE';addForge(-s.bet);sfx('lose')}
+    s.phase='done';sfx('card');
+  }
+  gameKeyDown=k=>{
+    if(s.phase==='bet'){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k==='ArrowLeft'||k==='ArrowRight'){
+        const opts=['player','banker','tie'];
+        const i=opts.indexOf(s.betOn);
+        s.betOn=opts[(i+(k==='ArrowRight'?1:-1)+3)%3];
+      }
+      if(k===' ')play();
+    }
+    if(s.phase==='done'&&k===' '){s.phase='bet';s.result=''}
+  };
+  gameUpdate=()=>{
+    G.fillStyle='#1a0a00';G.fillRect(0,0,500,420);
+    G.fillStyle='#d4a';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('BACCARAT',250,25);
+    if(s.phase==='bet'){
+      G.fillStyle='#fff';G.font='14px Courier New';
+      G.fillText('Bet: '+s.bet+' on '+s.betOn.toUpperCase(),250,190);
+      G.fillStyle='#886';G.font='11px Courier New';
+      G.fillText('←/→ Player/Banker/Tie · ↑/↓ Amount · SPACE Deal',250,220);
+    } else {
+      G.fillStyle='#cca';G.font='12px Courier New';G.textAlign='left';
+      G.fillText('PLAYER ('+bVal(s.player)+')',30,70);
+      for(let i=0;i<s.player.length;i++)drawCard(30+i*55,80,s.player[i],false);
+      G.fillText('BANKER ('+bVal(s.banker)+')',30,200);
+      for(let i=0;i<s.banker.length;i++)drawCard(30+i*55,210,s.banker[i],false);
+      G.fillStyle=s.result.includes('WIN')||s.result.includes('TIE!')?'#4f8':'#f44';
+      G.font='bold 16px Courier New';G.textAlign='center';G.fillText(s.result,250,340);
+      G.fillStyle='#888';G.font='11px Courier New';G.fillText('SPACE for new round',250,370);
+    }
+  };
+}
+
+// ================================================================
+// GAME 5: FORGE CRASH (Aviator-style)
+// ================================================================
+function startCrash(){
+  const s={bet:5,phase:'bet',multiplier:1,speed:0.5,crashed:false,cashedOut:false,cashoutAt:0,history:[]};
+  function launch(){s.phase='flying';s.multiplier=1;s.speed=0.5;s.crashed=false;s.cashedOut=false;sfx('spin')}
+  function cashout(){
+    if(s.crashed||s.cashedOut)return;
+    s.cashedOut=true;s.cashoutAt=s.multiplier;
+    const win=s.bet*s.multiplier;
+    addForge(win);sfx(s.multiplier>5?'bigwin':'cashout');
+  }
+  gameKeyDown=k=>{
+    if(s.phase==='bet'){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k===' '&&s.bet<=forgeBalance){addForge(-s.bet);launch()}
+    }
+    if(s.phase==='flying'&&k===' '&&!s.cashedOut)cashout();
+    if(s.phase==='done'&&k===' '){s.phase='bet'}
+  };
+  gameUpdate=(dt)=>{
+    if(s.phase==='flying'&&!s.crashed&&!s.cashedOut){
+      s.multiplier+=s.speed*dt*2;
+      s.speed+=dt*0.3;
+      // Crash probability increases with multiplier
+      const crashChance=0.01+(s.multiplier-1)*0.008;
+      if(Math.random()<crashChance){
+        s.crashed=true;s.phase='done';
+        s.history.unshift(s.multiplier.toFixed(2)+'x');
+        if(s.history.length>10)s.history.pop();
+        sfx('crash');
+      }
+    }
+    if(s.cashedOut&&s.phase==='flying'){
+      // Let it keep going briefly then crash
+      s.multiplier+=s.speed*dt*2;s.speed+=dt*0.3;
+      if(Math.random()<0.05){s.crashed=true;s.phase='done';s.history.unshift(s.multiplier.toFixed(2)+'x');if(s.history.length>10)s.history.pop()}
+    }
+
+    G.fillStyle='#0a0a15';G.fillRect(0,0,500,420);
+    G.fillStyle='#f80';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('FORGE CRASH',250,25);
+
+    // Multiplier curve
+    G.strokeStyle='#4f8';G.lineWidth=2;G.beginPath();G.moveTo(50,350);
+    const points=Math.min(200,Math.floor((s.multiplier-1)*40));
+    for(let i=0;i<=points;i++){
+      const x=50+i*2;
+      const y=350-Math.pow(i/40,1.5)*100;
+      if(i===0)G.moveTo(x,y);else G.lineTo(x,y);
+    }
+    G.stroke();
+
+    // Rocket emoji position
+    if(points>0){
+      const rx=50+points*2,ry=350-Math.pow(points/40,1.5)*100;
+      G.fillStyle='#f80';G.font='20px Courier New';G.textAlign='center';G.fillText('🚀',rx,ry);
+    }
+
+    // Current multiplier
+    G.fillStyle=s.crashed?'#f44':s.cashedOut?'#4f8':'#fff';
+    G.font='bold 36px Courier New';
+    G.fillText(s.multiplier.toFixed(2)+'x',250,180);
+
+    if(s.crashed&&!s.cashedOut){G.fillStyle='#f44';G.font='bold 20px Courier New';G.fillText('CRASHED!',250,220)}
+    if(s.cashedOut){G.fillStyle='#4f8';G.font='bold 16px Courier New';G.fillText('Cashed out at '+s.cashoutAt.toFixed(2)+'x! +'+(s.bet*s.cashoutAt).toFixed(1),250,220)}
+
+    if(s.phase==='bet'){
+      G.fillStyle='#fff';G.font='14px Courier New';
+      G.fillText('Bet: '+s.bet+' $FORGE · SPACE Launch',250,280);
+    }
+    if(s.phase==='flying'&&!s.cashedOut){
+      G.fillStyle='#ff0';G.font='14px Courier New';
+      G.fillText('SPACE to Cash Out!',250,280);
+    }
+    if(s.phase==='done'){G.fillStyle='#888';G.font='11px Courier New';G.fillText('SPACE for new round',250,310)}
+
+    // History
+    G.fillStyle='#664';G.font='10px Courier New';G.textAlign='right';
+    G.fillText('History:',490,60);
+    for(let i=0;i<s.history.length;i++){
+      const v=parseFloat(s.history[i]);
+      G.fillStyle=v>=2?'#4f8':v>=1.5?'#ff0':'#f44';
+      G.fillText(s.history[i],490,75+i*13);
+    }
+  };
+}
+
+// ================================================================
+// GAME 6: MEGA WHEEL (Crazy Time style)
+// ================================================================
+function startWheel(){
+  const s={bet:5,spinning:false,angle:0,speed:0,segments:[],result:'',betType:'x2'};
+  // 54 segments like Crazy Time
+  const segTypes=[
+    {label:'1',mult:1,count:22,color:'#dd0'},
+    {label:'2',mult:2,count:15,color:'#48f'},
+    {label:'5',mult:5,count:7,color:'#c4f'},
+    {label:'10',mult:10,count:4,color:'#4f8'},
+    {label:'20',mult:20,count:3,color:'#f80'},
+    {label:'50',mult:50,count:2,color:'#f44'},
+    {label:'MEGA',mult:100,count:1,color:'#fff'}
+  ];
+  s.segments=[];
+  for(const st of segTypes)for(let i=0;i<st.count;i++)s.segments.push({...st});
+  // Shuffle segments
+  for(let i=s.segments.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[s.segments[i],s.segments[j]]=[s.segments[j],s.segments[i]]}
+  const betOpts=['x1','x2','x5','x10','x20','x50','MEGA'];
+
+  gameKeyDown=k=>{
+    if(!s.spinning){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k==='ArrowLeft'){const i=betOpts.indexOf(s.betType);s.betType=betOpts[(i-1+betOpts.length)%betOpts.length]}
+      if(k==='ArrowRight'){const i=betOpts.indexOf(s.betType);s.betType=betOpts[(i+1)%betOpts.length]}
+      if(k===' '&&s.bet<=forgeBalance){s.spinning=true;s.speed=12+Math.random()*8;s.result='';addForge(-s.bet);sfx('spin')}
+    }
+  };
+  gameUpdate=(dt)=>{
+    if(s.spinning){
+      s.angle+=s.speed*dt;s.speed*=0.985;
+      if(s.speed<0.2){
+        s.spinning=false;
+        const segIdx=Math.floor(((s.angle%(Math.PI*2))/(Math.PI*2))*s.segments.length)%s.segments.length;
+        const seg=s.segments[segIdx];
+        const targetMult=s.betType==='MEGA'?100:parseInt(s.betType.substring(1));
+        if(seg.mult===targetMult){
+          const win=s.bet*seg.mult;s.result='WIN! '+seg.label+' +'+(win).toFixed(1);addForge(win+s.bet);sfx(seg.mult>=20?'bigwin':'win');
+        }else{
+          s.result=seg.label+' — Not your bet';sfx('lose');
+        }
+      }
+    }
+    G.fillStyle='#1a001a';G.fillRect(0,0,500,420);
+    G.fillStyle='#f0f';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('MEGA WHEEL',250,25);
+    // Draw wheel
+    G.save();G.translate(250,200);G.rotate(-s.angle);
+    const n=s.segments.length;
+    for(let i=0;i<n;i++){
+      const a1=i/n*Math.PI*2,a2=(i+1)/n*Math.PI*2;
+      G.fillStyle=s.segments[i].color;G.globalAlpha=0.7;
+      G.beginPath();G.moveTo(0,0);G.arc(0,0,130,a1,a2);G.fill();
+      G.globalAlpha=1;
+      G.save();G.rotate((a1+a2)/2);G.translate(100,0);G.rotate(Math.PI/2);
+      G.fillStyle='#000';G.font='bold 8px Courier New';G.textAlign='center';
+      G.fillText(s.segments[i].label,0,3);
+      G.restore();
+    }
+    G.restore();
+    // Pointer
+    G.fillStyle='#fff';G.beginPath();G.moveTo(250,65);G.lineTo(244,78);G.lineTo(256,78);G.closePath();G.fill();
+
+    G.fillStyle='#cca';G.font='13px Courier New';G.textAlign='center';
+    G.fillText('Bet: '+s.bet+' on '+s.betType,250,360);
+    G.fillStyle='#886';G.font='11px Courier New';
+    G.fillText('←/→ Bet Segment · ↑/↓ Amount · SPACE Spin',250,380);
+    if(s.result){G.fillStyle=s.result.includes('WIN')?'#4f8':'#f44';G.font='bold 14px Courier New';G.fillText(s.result,250,405)}
+  };
+}
+
+// ================================================================
+// GAME 7: SLOTS (5-reel with cascading wins)
+// ================================================================
+function startSlots(){
+  const s={bet:5,reels:[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],spinning:false,spinTimers:[0,0,0,0,0],results:[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],message:'',symbols:['7','$','F','★','♦','♣','♥','♠'],symCol:['#f44','#4f8','#f80','#ff0','#48f','#4f8','#f44','#fff']};
+  function spin(){
+    if(s.spinning||s.bet>forgeBalance)return;
+    s.spinning=true;addForge(-s.bet);s.message='';
+    for(let i=0;i<5;i++){s.spinTimers[i]=20+i*8;for(let j=0;j<3;j++)s.results[i][j]=Math.floor(Math.random()*s.symbols.length)}
+    sfx('spin');
+  }
+  function checkWin(){
+    // Check middle row (payline)
+    const mid=s.results.map(r=>r[1]);
+    if(mid.every(v=>v===mid[0])){
+      const mult=mid[0]===0?50:mid[0]===1?20:mid[0]===2?15:mid[0]===3?10:5;
+      s.message='5 OF A KIND! +'+(s.bet*mult);addForge(s.bet*mult);sfx('bigwin');return;
+    }
+    // 3+ in a row from left
+    let streak=1;for(let i=1;i<5;i++){if(mid[i]===mid[0])streak++;else break}
+    if(streak>=3){
+      const mult=streak===5?10:streak===4?5:2;
+      s.message=streak+' IN A ROW! +'+(s.bet*mult);addForge(s.bet*mult);sfx('win');return;
+    }
+    // Any 3 matching
+    const counts={};mid.forEach(v=>counts[v]=(counts[v]||0)+1);
+    const max=Math.max(...Object.values(counts));
+    if(max>=3){s.message='3 MATCH! +'+(s.bet*1.5);addForge(s.bet*1.5);sfx('win');return}
+    s.message='No win';sfx('lose');
+  }
+  gameKeyDown=k=>{
+    if(!s.spinning){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k===' ')spin();
+    }
+  };
+  gameUpdate=(dt)=>{
+    let allDone=true;
+    for(let i=0;i<5;i++){
+      if(s.spinTimers[i]>0){
+        s.spinTimers[i]-=dt*60;allDone=false;
+        for(let j=0;j<3;j++)s.reels[i][j]=Math.floor(Math.random()*s.symbols.length);
+        if(s.spinTimers[i]<=0){s.reels[i]=[...s.results[i]];sfx('click')}
+      }
+    }
+    if(s.spinning&&allDone){s.spinning=false;checkWin()}
+
+    G.fillStyle='#1a0a2a';G.fillRect(0,0,500,420);
+    G.fillStyle='#ff0';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('FORGE SLOTS',250,25);
+    // Reels
+    for(let i=0;i<5;i++){
+      const x=55+i*82,y=70;
+      G.fillStyle='#111';G.fillRect(x,y,70,180);G.strokeStyle='#d4a';G.lineWidth=1;G.strokeRect(x,y,70,180);
+      for(let j=0;j<3;j++){
+        const sym=s.reels[i][j];
+        G.fillStyle=j===1?s.symCol[sym]:'#555';
+        G.font=(j===1?'bold 30':'22')+'px Courier New';
+        G.fillText(s.symbols[sym],x+35,y+45+j*60);
+      }
+    }
+    // Payline
+    G.strokeStyle='#f80';G.lineWidth=2;G.beginPath();G.moveTo(50,160);G.lineTo(460,160);G.stroke();
+    G.fillStyle='#cca';G.font='13px Courier New';G.fillText('Bet: '+s.bet+' · SPACE Spin',250,290);
+    if(s.message){G.fillStyle=s.message.includes('!')? '#4f8':'#f44';G.font='bold 14px Courier New';G.fillText(s.message,250,320)}
+    G.fillStyle='#886';G.font='10px Courier New';
+    G.fillText('5-Kind: 50x/20x/15x/10x/5x · 3-in-row: 2x · 3-match: 1.5x',250,350);
+  };
+}
+
+// ================================================================
+// GAME 8: HI-LO
+// ================================================================
+function startHiLo(){
+  const s={deck:shuffle(mkDeck()),current:null,streak:0,bet:5,phase:'bet',multiplier:1,message:''};
+  function deal(){s.current=s.deck.pop();if(s.deck.length<5)s.deck=shuffle(mkDeck());s.streak=0;s.multiplier=1;s.phase='guess';sfx('card')}
+  function guess(higher){
+    const next=s.deck.pop();
+    const cv=RANKS.indexOf(s.current.rank),nv=RANKS.indexOf(next.rank);
+    const correct=(higher&&nv>=cv)||(!higher&&nv<=cv);
+    s.current=next;
+    if(correct){s.streak++;s.multiplier*=1.5;sfx('ding');s.phase='guess'}
+    else{s.message='Wrong! Lost '+s.bet;addForge(-s.bet);sfx('lose');s.phase='done'}
+  }
+  function cashout(){
+    const win=s.bet*s.multiplier;
+    s.message='Cashed out! +'+win.toFixed(1);addForge(win);sfx('cashout');s.phase='done';
+  }
+  gameKeyDown=k=>{
+    if(s.phase==='bet'){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k===' '){addForge(-s.bet);deal()}
+    }
+    if(s.phase==='guess'){
+      if(k==='ArrowUp')guess(true);
+      if(k==='ArrowDown')guess(false);
+      if(k===' '&&s.streak>0)cashout();
+    }
+    if(s.phase==='done'&&k===' '){s.phase='bet';s.message=''}
+  };
+  gameUpdate=()=>{
+    G.fillStyle='#001a1a';G.fillRect(0,0,500,420);
+    G.fillStyle='#0ff';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('HI-LO',250,25);
+    if(s.phase==='bet'){
+      G.fillStyle='#fff';G.font='14px Courier New';G.fillText('Bet: '+s.bet+' · SPACE Start',250,200);
+    } else {
+      if(s.current)drawCard(220,100,s.current,false);
+      G.fillStyle='#fff';G.font='14px Courier New';G.textAlign='center';
+      G.fillText('Streak: '+s.streak+' · Multiplier: '+s.multiplier.toFixed(2)+'x',250,220);
+      if(s.phase==='guess'){
+        G.fillStyle='#4f8';G.fillText('↑ Higher · ↓ Lower',250,260);
+        if(s.streak>0){G.fillStyle='#f80';G.fillText('SPACE to Cash Out (+'+(s.bet*s.multiplier).toFixed(1)+')',250,290)}
+      }
+    }
+    if(s.message){G.fillStyle=s.message.includes('Cash')?'#4f8':'#f44';G.font='bold 14px Courier New';G.fillText(s.message,250,340);G.fillStyle='#888';G.font='11px Courier New';G.fillText('SPACE for new round',250,370)}
+  };
+}
+
+// ================================================================
+// GAME 9: MINES
+// ================================================================
+function startMines(){
+  const s={grid:5,mines:5,revealed:[],minePos:[],bet:5,phase:'bet',multiplier:1,safe:0,message:''};
+  function setup(){
+    s.revealed=Array.from({length:25},()=>false);
+    s.minePos=[];
+    while(s.minePos.length<s.mines){const p=Math.floor(Math.random()*25);if(!s.minePos.includes(p))s.minePos.push(p)}
+    s.multiplier=1;s.safe=0;s.phase='play';s.message='';
+  }
+  gameKeyDown=k=>{
+    if(s.phase==='bet'){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k===' '){addForge(-s.bet);setup()}
+    }
+    if(s.phase==='play'&&k===' '&&s.safe>0){
+      const win=s.bet*s.multiplier;s.message='Cashed out! +'+win.toFixed(1);addForge(win);sfx('cashout');
+      s.phase='done';for(let i=0;i<25;i++)s.revealed[i]=true;
+    }
+    if(s.phase==='done'&&k===' '){s.phase='bet';s.message=''}
+  };
+  gameClick=(mx,my)=>{
+    if(s.phase!=='play')return;
+    const col=Math.floor((mx-75)/70),row=Math.floor((my-60)/70);
+    if(col<0||col>=5||row<0||row>=5)return;
+    const idx=row*5+col;
+    if(s.revealed[idx])return;
+    s.revealed[idx]=true;
+    if(s.minePos.includes(idx)){
+      sfx('crash');s.message='BOOM! Mine hit!';s.phase='done';
+      for(let i=0;i<25;i++)s.revealed[i]=true;
+    }else{
+      s.safe++;s.multiplier=1+s.safe*0.4+(s.safe>5?s.safe*0.3:0);sfx('ding');
+      if(s.safe===25-s.mines){
+        const win=s.bet*s.multiplier;s.message='ALL SAFE! +'+win.toFixed(1);addForge(win);sfx('bigwin');s.phase='done';
+      }
+    }
+  };
+  gameUpdate=()=>{
+    G.fillStyle='#0a0a00';G.fillRect(0,0,500,420);
+    G.fillStyle='#ff0';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('FORGE MINES',250,25);
+    if(s.phase==='bet'){
+      G.fillStyle='#fff';G.font='14px Courier New';G.fillText('Bet: '+s.bet+' · SPACE Start',250,200);
+      G.fillStyle='#886';G.font='11px Courier New';G.fillText('5 mines hidden in 25 tiles. Click to reveal. Cash out anytime.',250,230);
+    } else {
+      for(let r=0;r<5;r++)for(let c=0;c<5;c++){
+        const x=75+c*70,y=60+r*70,idx=r*5+c;
+        if(s.revealed[idx]){
+          if(s.minePos.includes(idx)){G.fillStyle='#f44';G.fillRect(x,y,60,60);G.fillStyle='#000';G.font='24px Courier New';G.textAlign='center';G.fillText('💣',x+30,y+40)}
+          else{G.fillStyle='#2a4';G.fillRect(x,y,60,60);G.fillStyle='#fff';G.font='20px Courier New';G.textAlign='center';G.fillText('💎',x+30,y+40)}
+        }else{G.fillStyle='#333';G.fillRect(x,y,60,60);G.strokeStyle='#555';G.strokeRect(x,y,60,60)}
+      }
+      G.fillStyle='#fff';G.font='13px Courier New';G.textAlign='center';
+      G.fillText('Safe: '+s.safe+' · Mult: '+s.multiplier.toFixed(2)+'x · Potential: '+(s.bet*s.multiplier).toFixed(1),250,30+5*70+15);
+      if(s.phase==='play'&&s.safe>0){G.fillStyle='#f80';G.fillText('SPACE to Cash Out',250,30+5*70+35)}
+    }
+    if(s.message){G.fillStyle=s.message.includes('Cash')||s.message.includes('ALL')?'#4f8':'#f44';G.font='bold 14px Courier New';G.textAlign='center';G.fillText(s.message,250,400);if(s.phase==='done'){G.fillStyle='#888';G.font='11px Courier New';G.fillText('SPACE again',250,415)}
+    }
+  };
+}
+
+// ================================================================
+// GAME 10: KENO
+// ================================================================
+function startKeno(){
+  const s={picks:[],drawn:[],bet:5,phase:'pick',message:'',matches:0};
+  gameClick=(mx,my)=>{
+    if(s.phase!=='pick')return;
+    const col=Math.floor((mx-25)/58),row=Math.floor((my-50)/42);
+    if(col<0||col>=8||row<0||row>=5)return;
+    const num=row*8+col+1;
+    if(s.picks.includes(num))s.picks=s.picks.filter(n=>n!==num);
+    else if(s.picks.length<10)s.picks.push(num);
+    sfx('click');
+  };
+  gameKeyDown=k=>{
+    if(s.phase==='pick'&&k===' '&&s.picks.length>=3&&s.bet<=forgeBalance){
+      addForge(-s.bet);s.drawn=[];s.matches=0;
+      while(s.drawn.length<20){const n=1+Math.floor(Math.random()*40);if(!s.drawn.includes(n))s.drawn.push(n)}
+      s.matches=s.picks.filter(n=>s.drawn.includes(n)).length;
+      const payTable={0:0,1:0,2:0.5,3:1,4:3,5:10,6:30,7:100,8:500,9:2000,10:10000};
+      const mult=payTable[s.matches]||0;
+      if(mult>0){s.message='Matched '+s.matches+'! +'+(s.bet*mult).toFixed(1);addForge(s.bet*mult);sfx(s.matches>=5?'bigwin':'win')}
+      else{s.message='Matched '+s.matches+' — No win';sfx('lose')}
+      s.phase='done';
+    }
+    if(s.phase==='done'&&k===' '){s.phase='pick';s.picks=[];s.drawn=[];s.message=''}
+  };
+  gameUpdate=()=>{
+    G.fillStyle='#001a0a';G.fillRect(0,0,500,420);
+    G.fillStyle='#4f8';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('FORGE KENO',250,25);
+    G.fillStyle='#886';G.font='10px Courier New';
+    G.fillText('Pick 3-10 numbers. 20 drawn. Match to win!',250,42);
+    for(let r=0;r<5;r++)for(let c=0;c<8;c++){
+      const x=25+c*58,y=50+r*42,num=r*8+c+1;
+      const picked=s.picks.includes(num);
+      const drawn=s.drawn.includes(num);
+      const matched=picked&&drawn;
+      G.fillStyle=matched?'#ff0':picked?'#48f':drawn?'#4a4':'#222';
+      G.fillRect(x,y,52,36);G.strokeStyle='#444';G.strokeRect(x,y,52,36);
+      G.fillStyle=matched?'#000':picked||drawn?'#fff':'#888';
+      G.font='bold 14px Courier New';G.textAlign='center';G.fillText(num,x+26,y+24);
+    }
+    G.fillStyle='#cca';G.font='12px Courier New';G.textAlign='center';
+    G.fillText('Picks: '+s.picks.length+'/10 · Bet: '+s.bet,250,275);
+    if(s.phase==='pick')G.fillText(s.picks.length>=3?'SPACE to Draw':'Click numbers (min 3)',250,295);
+    if(s.message){G.fillStyle=s.message.includes('!')?'#4f8':'#f44';G.font='bold 14px Courier New';G.fillText(s.message,250,330)}
+    if(s.phase==='done'){G.fillStyle='#888';G.font='11px Courier New';G.fillText('SPACE for new round',250,355)}
+    // Pay table
+    G.fillStyle='#664';G.font='9px Courier New';
+    G.fillText('3:1x  4:3x  5:10x  6:30x  7:100x  8:500x  9:2000x  10:10000x',250,385);
+  };
+}
+
+// ================================================================
+// GAME 11: DICE (Over/Under)
+// ================================================================
+function startDice(){
+  const s={bet:5,target:50,over:true,phase:'bet',roll:0,message:''};
+  function calcMult(){return s.over?(99/(99-s.target)*0.97):(99/s.target*0.97)}
+  gameKeyDown=k=>{
+    if(s.phase==='bet'){
+      if(k==='ArrowUp')s.target=Math.min(95,s.target+5);
+      if(k==='ArrowDown')s.target=Math.max(5,s.target-5);
+      if(k==='ArrowLeft'||k==='ArrowRight')s.over=!s.over;
+      if(k==='ArrowUp'&&keys['shift'])s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown'&&keys['shift'])s.bet=Math.max(1,s.bet-5);
+      if(k===' '&&s.bet<=forgeBalance){
+        addForge(-s.bet);
+        s.roll=Math.floor(Math.random()*100);
+        const win=(s.over&&s.roll>s.target)||(!s.over&&s.roll<s.target);
+        if(win){const w=s.bet*calcMult();s.message='Rolled '+s.roll+'! WIN +'+(w).toFixed(1);addForge(w);sfx('win')}
+        else{s.message='Rolled '+s.roll+'. Lose.';sfx('lose')}
+        s.phase='done';
+      }
+    }
+    if(s.phase==='done'&&k===' '){s.phase='bet';s.message=''}
+  };
+  gameUpdate=()=>{
+    G.fillStyle='#111';G.fillRect(0,0,500,420);
+    G.fillStyle='#fff';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('FORGE DICE',250,25);
+    // Bar visualization
+    G.fillStyle='#f44';G.fillRect(50,100,400*(s.target/99),40);
+    G.fillStyle='#4f8';G.fillRect(50+400*(s.target/99),100,400*(1-s.target/99),40);
+    G.fillStyle='#fff';G.font='12px Courier New';
+    G.fillText('Target: '+s.target,250,90);
+    G.fillText((s.over?'OVER ':'UNDER ')+s.target+' · Mult: '+calcMult().toFixed(2)+'x',250,170);
+    G.fillText('Win chance: '+(s.over?(99-s.target):s.target)+'%',250,190);
+    if(s.phase==='bet'){
+      G.fillStyle='#cca';G.fillText('Bet: '+s.bet+' · ↑/↓ Target · ←/→ Over/Under · SPACE Roll',250,230);
+    }
+    if(s.roll>0||s.phase==='done'){
+      G.fillStyle='#ff0';G.font='bold 48px Courier New';G.fillText(s.roll,250,300);
+    }
+    if(s.message){G.fillStyle=s.message.includes('WIN')?'#4f8':'#f44';G.font='bold 14px Courier New';G.fillText(s.message,250,360);G.fillStyle='#888';G.font='11px Courier New';G.fillText('SPACE again',250,385)}
+  };
+}
+
+// ================================================================
+// GAME 12: SCRATCH CARD
+// ================================================================
+function startScratch(){
+  const s={bet:5,phase:'bet',cells:[],scratched:[],prize:0,message:''};
+  function generate(){
+    s.cells=[];s.scratched=[];s.prize=0;s.message='';
+    const prizes=[0,0,0,0,0,0.5,1,1,2,2,5,10,25,50,100];
+    // 9 cells, 3x3
+    for(let i=0;i<9;i++){s.cells.push(prizes[Math.floor(Math.random()*prizes.length)]);s.scratched.push(false)}
+    s.phase='scratch';
+  }
+  gameClick=(mx,my)=>{
+    if(s.phase!=='scratch')return;
+    const col=Math.floor((mx-125)/90),row=Math.floor((my-80)/90);
+    if(col<0||col>=3||row<0||row>=3)return;
+    const idx=row*3+col;
+    if(!s.scratched[idx]){s.scratched[idx]=true;sfx('click')}
+    if(s.scratched.every(v=>v)){
+      // Count matches (3 of same = that prize)
+      const counts={};s.cells.forEach(v=>counts[v]=(counts[v]||0)+1);
+      let bestPrize=0;
+      for(const [val,cnt] of Object.entries(counts)){if(cnt>=3&&parseFloat(val)>bestPrize)bestPrize=parseFloat(val)}
+      if(bestPrize>0){s.prize=s.bet*bestPrize;s.message='3 MATCH! +'+s.prize.toFixed(1);addForge(s.prize);sfx(bestPrize>=10?'bigwin':'win')}
+      else{s.message='No matches';sfx('lose')}
+      s.phase='done';
+    }
+  };
+  gameKeyDown=k=>{
+    if(s.phase==='bet'){
+      if(k==='ArrowUp')s.bet=Math.min(forgeBalance,s.bet+5);
+      if(k==='ArrowDown')s.bet=Math.max(1,s.bet-5);
+      if(k===' '&&s.bet<=forgeBalance){addForge(-s.bet);generate()}
+    }
+    if(s.phase==='done'&&k===' '){s.phase='bet'}
+  };
+  gameUpdate=()=>{
+    G.fillStyle='#1a1a00';G.fillRect(0,0,500,420);
+    G.fillStyle='#f80';G.font='bold 16px Courier New';G.textAlign='center';
+    G.fillText('FORGE SCRATCH CARD',250,25);
+    if(s.phase==='bet'){
+      G.fillStyle='#fff';G.font='14px Courier New';G.fillText('Bet: '+s.bet+' · SPACE Buy Card',250,200);
+      G.fillStyle='#886';G.font='11px Courier New';G.fillText('Match 3 of the same to win that multiplier!',250,230);
+    } else {
+      G.fillStyle='#886';G.font='11px Courier New';G.fillText('Click cells to scratch. Match 3 = Win!',250,55);
+      for(let r=0;r<3;r++)for(let c=0;c<3;c++){
+        const x=125+c*90,y=80+r*90,idx=r*3+c;
+        if(s.scratched[idx]){
+          G.fillStyle=s.cells[idx]>0?'#2a2':'#422';
+          G.fillRect(x,y,80,80);
+          G.fillStyle=s.cells[idx]>0?'#ff0':'#888';
+          G.font='bold 20px Courier New';G.textAlign='center';
+          G.fillText(s.cells[idx]>0?s.cells[idx]+'x':'—',x+40,y+48);
+        }else{
+          G.fillStyle='#888';G.fillRect(x,y,80,80);
+          G.fillStyle='#aaa';G.font='bold 24px Courier New';G.textAlign='center';G.fillText('?',x+40,y+48);
+        }
+        G.strokeStyle='#555';G.strokeRect(x,y,80,80);
+      }
+    }
+    if(s.message){G.fillStyle=s.message.includes('MATCH')?'#4f8':'#f44';G.font='bold 14px Courier New';G.textAlign='center';G.fillText(s.message,250,380);G.fillStyle='#888';G.font='11px Courier New';G.fillText('SPACE for new card',250,400)}
+  };
+}
+
+// ================================================================
+// 3D RENDER LOOP
+// ================================================================
+let lastTime=0;
+let ambientTimer=0;
+
+function render(now){
+  requestAnimationFrame(render);
+  const dt=Math.min((now-lastTime)/1000,0.05);
+  lastTime=now;gameTime=now*0.001;
+  updateWallet();
+
+  // Ambient casino sounds
+  ambientTimer+=dt;
+  if(ambientTimer>6+Math.random()*10){ambientTimer=0;if(!activeGame)playTone(300+Math.random()*500,0.03,'sine',0.015)}
+
+  if(activeGame&&gameUpdate){gameUpdate(dt);return}
+
+  // Movement
+  const speed=3.5;
+  const dx=-Math.sin(yaw),dz=-Math.cos(yaw);
+  const sx=Math.cos(yaw),sz=-Math.sin(yaw);
+  if(keys['w']){px+=dx*speed*dt;pz+=dz*speed*dt}
+  if(keys['s']){px-=dx*speed*dt;pz-=dz*speed*dt}
+  if(keys['a']){px+=sx*speed*dt;pz+=sz*speed*dt}
+  if(keys['d']){px-=sx*speed*dt;pz-=sz*speed*dt}
+  px=Math.max(-RW/2+1,Math.min(RW/2-1,px));
+  pz=Math.max(-RD/2+1,Math.min(RD/2-1,pz));
+
+  const proj=M4.persp(1.1,C.width/C.height,0.1,100);
+  const lx=px-Math.sin(yaw),ly=py+Math.sin(pitch),lz=pz-Math.cos(yaw);
+  const view=M4.lookAt([px,py,pz],[lx,ly,lz],[0,1,0]);
+
+  GL.clearColor(0.02,0.01,0.03,1);
+  GL.clear(GL.COLOR_BUFFER_BIT|GL.DEPTH_BUFFER_BIT);
+  GL.useProgram(prog);
+  GL.uniformMatrix4fv(uP,false,proj);
+  GL.uniformMatrix4fv(uV,false,view);
+  GL.uniform3fv(uEye,[px,py,pz]);
+  GL.uniform1f(uTime_,gameTime);
+
+  // Room
+  draw(floor,M4.trans(M4.id(),0,-0.15,0));
+  draw(ceiling,M4.trans(M4.id(),0,RH,0));
+  draw(wallL,M4.trans(M4.id(),-RW/2,RH/2,0));
+  draw(wallR,M4.trans(M4.id(),RW/2,RH/2,0));
+  draw(wallB,M4.trans(M4.id(),0,RH/2,-RD/2));
+  draw(wallF,M4.trans(M4.id(),0,RH/2,RD/2));
+
+  // Carpet lines
+  let ci=0;
+  for(let i=-20;i<=20;i+=5){
+    draw(carpetLines[ci*2],M4.trans(M4.id(),i,0.01,0));
+    if(carpetLines[ci*2+1].mesh)draw(carpetLines[ci*2+1].mesh,M4.trans(M4.id(),0,0.01,i));
+    ci++;
+  }
+
+  // Chandeliers
+  for(const ch of chandeliers)draw(ch.mesh,M4.trans(M4.id(),ch.x,RH-0.2,ch.z));
+
+  // Game stations
+  for(const st of stations){
+    const m=M4.rotY(M4.trans(M4.id(),st.x,0.6,st.z),st.rot);
+    draw(st.body,m);
+    if(st.type==='table')draw(st.top,M4.trans(m,0,0.65,0));
+    else draw(st.top,M4.trans(m,0,0.6,0.85));
+    draw(st.sign,M4.trans(m,0,1.5,0.8));
+  }
+
+  // Pillars
+  for(const p of pillars)draw(p.mesh,M4.trans(M4.id(),p.x,0.75,p.z));
+
+  // HUD
+  const nearest=nearestStation();
+  if(nearest){
+    document.getElementById('h-prompt').textContent='Press E: '+nearest.name;
+    document.getElementById('h-prompt').style.color='#f80';
+    document.getElementById('h-game').textContent=(highScores[nearest.id]?'Best: '+highScores[nearest.id]:'');
+  } else {
+    document.getElementById('h-prompt').textContent='Walk the floor';
+    document.getElementById('h-prompt').style.color='#d4a';
+    document.getElementById('h-game').textContent='';
+  }
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

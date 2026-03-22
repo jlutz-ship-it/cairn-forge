@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suzanne's Command Center — Personal Assistant Toolkit</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#faf8f5;--surface:#ffffff;--panel:#f5f0ea;--border:#e0d8cc;
+  --text:#2a2420;--dim:#8a7e72;--accent:#c4713b;--accent2:#a85c2f;
+  --success:#4a8c5c;--warn:#c4713b;--danger:#b84040;
+  --blue:#4a7ab8;--purple:#7a5cb8;--gold:#b89a4a;
+  --shadow:0 2px 8px rgba(42,36,32,.08);
+  --shadow2:0 4px 16px rgba(42,36,32,.12);
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI','Helvetica Neue',Arial,sans-serif;min-height:100vh}
+
+/* ═══ TOP BAR ═══ */
+.topbar{background:var(--surface);border-bottom:2px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow);position:sticky;top:0;z-index:100}
+.topbar h1{font-size:20px;color:var(--accent);font-weight:600}
+.topbar h1 span{color:var(--text);font-weight:400}
+.topbar .date{margin-left:auto;color:var(--dim);font-size:14px}
+.topbar .greeting{font-size:14px;color:var(--dim)}
+
+/* ═══ NAV TABS ═══ */
+.nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0}
+.nav-tab{padding:12px 24px;font-size:14px;color:var(--dim);cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;font-weight:500;user-select:none}
+.nav-tab:hover{color:var(--text);background:var(--panel)}
+.nav-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.nav-tab .badge{background:var(--accent);color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:6px;font-weight:600}
+
+/* ═══ MAIN CONTENT ═══ */
+.main{max-width:1200px;margin:0 auto;padding:24px}
+.page{display:none}
+.page.active{display:block}
+
+/* ═══ CARDS ═══ */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:var(--shadow);transition:box-shadow .2s}
+.card:hover{box-shadow:var(--shadow2)}
+.card h3{font-size:16px;margin-bottom:12px;color:var(--text);display:flex;align-items:center;gap:8px}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+
+/* ═══ FORMS ═══ */
+input,textarea,select{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;background:var(--bg);color:var(--text);transition:border .2s}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(196,113,59,.1)}
+textarea{resize:vertical;min-height:80px}
+label{display:block;font-size:13px;color:var(--dim);margin-bottom:4px;font-weight:500}
+.form-row{margin-bottom:12px}
+.form-row-inline{display:flex;gap:12px}
+.form-row-inline>*{flex:1}
+
+/* ═══ BUTTONS ═══ */
+.btn{padding:10px 20px;border:none;border-radius:8px;font-size:14px;font-family:inherit;cursor:pointer;transition:all .15s;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--accent);color:white}
+.btn-primary:hover{background:var(--accent2)}
+.btn-success{background:var(--success);color:white}
+.btn-success:hover{background:#3d7a4e}
+.btn-danger{background:var(--danger);color:white}
+.btn-danger:hover{background:#a03535}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-outline:hover{background:var(--panel);border-color:var(--accent)}
+.btn-small{padding:6px 12px;font-size:12px}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ═══ TASKS ═══ */
+.task-item{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--surface);transition:all .2s}
+.task-item:hover{border-color:var(--accent);box-shadow:var(--shadow)}
+.task-item.done{opacity:.5;text-decoration:line-through}
+.task-check{width:22px;height:22px;border:2px solid var(--border);border-radius:6px;cursor:pointer;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.task-check:hover{border-color:var(--accent)}
+.task-check.checked{background:var(--success);border-color:var(--success);color:white}
+.task-content{flex:1}
+.task-title{font-size:14px;font-weight:500}
+.task-meta{font-size:12px;color:var(--dim);margin-top:4px;display:flex;gap:12px;flex-wrap:wrap}
+.task-priority{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase}
+.task-priority.high{background:rgba(184,64,64,.1);color:var(--danger)}
+.task-priority.medium{background:rgba(196,113,59,.1);color:var(--accent)}
+.task-priority.low{background:rgba(74,140,92,.1);color:var(--success)}
+.task-actions{display:flex;gap:4px;flex-shrink:0}
+.task-del{background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px;padding:4px;border-radius:4px}
+.task-del:hover{color:var(--danger);background:rgba(184,64,64,.05)}
+
+/* ═══ SCHEDULE ═══ */
+.schedule-item{display:flex;gap:16px;padding:14px;border-left:4px solid var(--accent);margin-bottom:10px;background:var(--surface);border-radius:0 8px 8px 0;box-shadow:var(--shadow)}
+.schedule-time{font-size:14px;font-weight:600;color:var(--accent);min-width:60px;flex-shrink:0}
+.schedule-detail{flex:1}
+.schedule-title{font-size:14px;font-weight:500}
+.schedule-notes{font-size:12px;color:var(--dim);margin-top:4px}
+.schedule-item.meeting{border-left-color:var(--blue)}
+.schedule-item.call{border-left-color:var(--purple)}
+.schedule-item.deadline{border-left-color:var(--danger)}
+.schedule-item.personal{border-left-color:var(--gold)}
+
+/* ═══ CONTACTS ═══ */
+.contact-card{padding:16px;border:1px solid var(--border);border-radius:10px;background:var(--surface);transition:all .2s}
+.contact-card:hover{box-shadow:var(--shadow2);border-color:var(--accent)}
+.contact-name{font-size:16px;font-weight:600;margin-bottom:4px}
+.contact-role{font-size:13px;color:var(--dim);margin-bottom:8px}
+.contact-info{font-size:13px;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.contact-notes{font-size:12px;color:var(--dim);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);line-height:1.5}
+.contact-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:var(--panel);color:var(--dim);margin-right:4px;margin-top:4px}
+
+/* ═══ DASHBOARD STATS ═══ */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;box-shadow:var(--shadow)}
+.stat-num{font-size:36px;font-weight:700;color:var(--accent)}
+.stat-label{font-size:13px;color:var(--dim);margin-top:4px;text-transform:uppercase;letter-spacing:1px}
+
+/* ═══ NOTES ═══ */
+.note-item{padding:14px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--surface)}
+.note-item:hover{border-color:var(--accent)}
+.note-date{font-size:11px;color:var(--dim)}
+.note-text{font-size:14px;margin-top:6px;line-height:1.6;white-space:pre-wrap}
+.note-tags{margin-top:8px}
+
+/* ═══ SEARCH ═══ */
+.search-bar{position:relative;margin-bottom:20px}
+.search-bar input{padding-left:36px}
+.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--dim);font-size:14px}
+
+/* ═══ FILTERS ═══ */
+.filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-btn{padding:6px 14px;font-size:12px;background:var(--panel);border:1px solid var(--border);border-radius:20px;cursor:pointer;color:var(--dim);transition:all .15s;font-family:inherit}
+.filter-btn:hover{color:var(--text);border-color:var(--accent)}
+.filter-btn.active{background:var(--accent);color:white;border-color:var(--accent)}
+
+/* ═══ EMPTY STATE ═══ */
+.empty{text-align:center;padding:48px 24px;color:var(--dim)}
+.empty h3{font-size:18px;margin-bottom:8px;color:var(--text)}
+.empty p{font-size:14px;line-height:1.6}
+
+/* ═══ MODAL ═══ */
+.modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(42,36,32,.4);z-index:200;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-bg.show{display:flex}
+.modal{background:var(--surface);border-radius:16px;padding:28px;max-width:500px;width:90%;box-shadow:var(--shadow2);max-height:85vh;overflow-y:auto}
+.modal h2{font-size:18px;margin-bottom:20px;color:var(--accent)}
+.modal .close-btn{position:absolute;top:12px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--dim)}
+
+/* ═══ TOAST ═══ */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--success);color:white;padding:12px 24px;border-radius:10px;font-size:14px;z-index:300;box-shadow:var(--shadow2);animation:toastIn .3s ease}
+@keyframes toastIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.toast.out{animation:toastOut .3s ease forwards}
+@keyframes toastOut{to{opacity:0;transform:translateY(16px)}}
+
+/* ═══ RESPONSIVE ═══ */
+@media(max-width:768px){
+  .topbar{padding:10px 16px}
+  .topbar h1{font-size:16px}
+  .nav{overflow-x:auto;padding:0 16px}
+  .nav-tab{padding:10px 16px;font-size:13px;white-space:nowrap}
+  .main{padding:16px}
+  .form-row-inline{flex-direction:column;gap:8px}
+  .stat-grid{grid-template-columns:1fr 1fr}
+  .card-grid{grid-template-columns:1fr}
+}
+
+/* ═══ PRINT ═══ */
+@media print{
+  .topbar,.nav,.btn,.task-actions,.task-del,.search-bar,.filters{display:none!important}
+  .page{display:block!important}
+  .card{box-shadow:none;border:1px solid #ccc;page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <h1>Suzanne's <span>Command Center</span></h1>
+  <div class="greeting" id="greeting">Good evening, Suzanne</div>
+  <div class="date" id="todayDate"></div>
+</div>
+
+<!-- NAV -->
+<div class="nav">
+  <div class="nav-tab active" onclick="showPage('dashboard',this)">Dashboard</div>
+  <div class="nav-tab" onclick="showPage('tasks',this)">Tasks <span class="badge" id="taskBadge">0</span></div>
+  <div class="nav-tab" onclick="showPage('schedule',this)">Schedule</div>
+  <div class="nav-tab" onclick="showPage('contacts',this)">Contacts</div>
+  <div class="nav-tab" onclick="showPage('notes',this)">Notes</div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main">
+
+  <!-- ═══ DASHBOARD ═══ -->
+  <div class="page active" id="page-dashboard">
+    <h2 style="margin-bottom:20px;font-size:22px">Today at a Glance</h2>
+
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-num" id="dashTasks">0</div><div class="stat-label">Open Tasks</div></div>
+      <div class="stat-card"><div class="stat-num" id="dashUrgent">0</div><div class="stat-label">Urgent</div></div>
+      <div class="stat-card"><div class="stat-num" id="dashEvents">0</div><div class="stat-label">Today's Events</div></div>
+      <div class="stat-card"><div class="stat-num" id="dashContacts">0</div><div class="stat-label">Contacts</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div class="card">
+        <h3>Upcoming Today</h3>
+        <div id="dashSchedule"><div class="empty"><p>No events today. Add some in the Schedule tab.</p></div></div>
+      </div>
+      <div class="card">
+        <h3>Top Priority Tasks</h3>
+        <div id="dashTopTasks"><div class="empty"><p>No urgent tasks. Nice!</p></div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:8px">
+      <h3>Recent Notes</h3>
+      <div id="dashRecentNotes"><div class="empty"><p>No notes yet. Jot something down in the Notes tab.</p></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ TASKS ═══ -->
+  <div class="page" id="page-tasks">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:22px">Tasks</h2>
+      <button class="btn btn-primary" onclick="openModal('task')">+ New Task</button>
+    </div>
+
+    <div class="search-bar">
+      <span class="search-icon">&#128269;</span>
+      <input type="text" id="taskSearch" placeholder="Search tasks..." oninput="renderTasks()">
+    </div>
+
+    <div class="filters">
+      <button class="filter-btn active" onclick="setTaskFilter('all',this)">All</button>
+      <button class="filter-btn" onclick="setTaskFilter('active',this)">Active</button>
+      <button class="filter-btn" onclick="setTaskFilter('done',this)">Done</button>
+      <button class="filter-btn" onclick="setTaskFilter('high',this)">High Priority</button>
+      <button class="filter-btn" onclick="setTaskFilter('jordan',this)">For Jordan</button>
+    </div>
+
+    <div id="taskList"></div>
+  </div>
+
+  <!-- ═══ SCHEDULE ═══ -->
+  <div class="page" id="page-schedule">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:22px">Schedule</h2>
+      <div class="btn-group">
+        <button class="btn btn-outline btn-small" onclick="changeDay(-1)">&lt; Previous</button>
+        <button class="btn btn-outline btn-small" onclick="changeDay(0)">Today</button>
+        <button class="btn btn-outline btn-small" onclick="changeDay(1)">Next &gt;</button>
+        <button class="btn btn-primary" onclick="openModal('event')">+ New Event</button>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:16px;color:var(--dim)" id="scheduleDate"></h3>
+    <div id="scheduleList"></div>
+  </div>
+
+  <!-- ═══ CONTACTS ═══ -->
+  <div class="page" id="page-contacts">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:22px">Contacts & People</h2>
+      <button class="btn btn-primary" onclick="openModal('contact')">+ New Contact</button>
+    </div>
+
+    <div class="search-bar">
+      <span class="search-icon">&#128269;</span>
+      <input type="text" id="contactSearch" placeholder="Search contacts..." oninput="renderContacts()">
+    </div>
+
+    <div class="card-grid" id="contactList"></div>
+  </div>
+
+  <!-- ═══ NOTES ═══ -->
+  <div class="page" id="page-notes">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="font-size:22px">Notes & Follow-ups</h2>
+      <button class="btn btn-primary" onclick="openModal('note')">+ New Note</button>
+    </div>
+
+    <div class="search-bar">
+      <span class="search-icon">&#128269;</span>
+      <input type="text" id="noteSearch" placeholder="Search notes..." oninput="renderNotes()">
+    </div>
+
+    <div class="filters">
+      <button class="filter-btn active" onclick="setNoteFilter('all',this)">All</button>
+      <button class="filter-btn" onclick="setNoteFilter('follow-up',this)">Follow-ups</button>
+      <button class="filter-btn" onclick="setNoteFilter('meeting',this)">Meetings</button>
+      <button class="filter-btn" onclick="setNoteFilter('idea',this)">Ideas</button>
+      <button class="filter-btn" onclick="setNoteFilter('important',this)">Important</button>
+    </div>
+
+    <div id="noteList"></div>
+  </div>
+</div>
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- Task Modal -->
+<div class="modal-bg" id="modal-task">
+  <div class="modal">
+    <h2>New Task</h2>
+    <div class="form-row"><label>What needs to be done?</label><input type="text" id="newTaskTitle" placeholder="e.g., Call the accountant about Q1 filing"></div>
+    <div class="form-row-inline">
+      <div class="form-row"><label>Priority</label><select id="newTaskPri"><option value="high">High — Do it today</option><option value="medium" selected>Medium — This week</option><option value="low">Low — When there's time</option></select></div>
+      <div class="form-row"><label>Due Date</label><input type="date" id="newTaskDue"></div>
+    </div>
+    <div class="form-row"><label>Category</label><select id="newTaskCat"><option value="jordan">For Jordan</option><option value="business">Business</option><option value="personal">Personal</option><option value="follow-up">Follow-up</option><option value="errand">Errand</option></select></div>
+    <div class="form-row"><label>Notes (optional)</label><textarea id="newTaskNotes" placeholder="Any extra details..."></textarea></div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="addTask()">Add Task</button>
+      <button class="btn btn-outline" onclick="closeModal('task')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Event Modal -->
+<div class="modal-bg" id="modal-event">
+  <div class="modal">
+    <h2>New Event</h2>
+    <div class="form-row"><label>What's happening?</label><input type="text" id="newEventTitle" placeholder="e.g., Meeting with Ryan about patents"></div>
+    <div class="form-row-inline">
+      <div class="form-row"><label>Date</label><input type="date" id="newEventDate"></div>
+      <div class="form-row"><label>Time</label><input type="time" id="newEventTime"></div>
+    </div>
+    <div class="form-row"><label>Type</label><select id="newEventType"><option value="meeting">Meeting</option><option value="call">Phone Call</option><option value="deadline">Deadline</option><option value="personal">Personal</option></select></div>
+    <div class="form-row"><label>Location (optional)</label><input type="text" id="newEventLoc" placeholder="e.g., Office, Zoom, Phone"></div>
+    <div class="form-row"><label>Notes (optional)</label><textarea id="newEventNotes" placeholder="What to prepare, who's involved..."></textarea></div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="addEvent()">Add Event</button>
+      <button class="btn btn-outline" onclick="closeModal('event')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Contact Modal -->
+<div class="modal-bg" id="modal-contact">
+  <div class="modal">
+    <h2>New Contact</h2>
+    <div class="form-row"><label>Name</label><input type="text" id="newContactName" placeholder="Full name"></div>
+    <div class="form-row"><label>Role / Relationship</label><input type="text" id="newContactRole" placeholder="e.g., Accountant, Lawyer, Friend, Client"></div>
+    <div class="form-row-inline">
+      <div class="form-row"><label>Phone</label><input type="tel" id="newContactPhone" placeholder="Phone number"></div>
+      <div class="form-row"><label>Email</label><input type="email" id="newContactEmail" placeholder="Email address"></div>
+    </div>
+    <div class="form-row"><label>Company / Organization</label><input type="text" id="newContactOrg" placeholder="Where they work"></div>
+    <div class="form-row"><label>Notes</label><textarea id="newContactNotes" placeholder="How you met, what they help with, anything to remember..."></textarea></div>
+    <div class="form-row"><label>Tags (comma separated)</label><input type="text" id="newContactTags" placeholder="e.g., lawyer, urgent, family"></div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="addContact()">Add Contact</button>
+      <button class="btn btn-outline" onclick="closeModal('contact')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Note Modal -->
+<div class="modal-bg" id="modal-note">
+  <div class="modal">
+    <h2>New Note</h2>
+    <div class="form-row"><label>Title</label><input type="text" id="newNoteTitle" placeholder="Quick title for this note"></div>
+    <div class="form-row"><label>Note</label><textarea id="newNoteText" placeholder="Write anything — meeting notes, reminders, ideas..." style="min-height:120px"></textarea></div>
+    <div class="form-row"><label>Category</label><select id="newNoteCat"><option value="general">General</option><option value="follow-up">Follow-up Needed</option><option value="meeting">Meeting Notes</option><option value="idea">Idea</option><option value="important">Important</option></select></div>
+    <div class="form-row"><label>Related Contact (optional)</label><input type="text" id="newNoteContact" placeholder="Who is this about?"></div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="addNote()">Save Note</button>
+      <button class="btn btn-outline" onclick="closeModal('note')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// SUZANNE'S COMMAND CENTER — ENGINE
+// ═══════════════════════════════════════════════
+
+// ─── DATA ───
+let data = {tasks:[], events:[], contacts:[], notes:[]};
+let taskFilter = 'all';
+let noteFilter = 'all';
+let viewDate = new Date();
+let idCounter = Date.now();
+
+function newId(){ return ++idCounter; }
+
+// ─── PERSISTENCE ───
+function save(){ try{localStorage.setItem('suzanne-pa',JSON.stringify(data));}catch(e){} }
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem('suzanne-pa'));
+    if(s){ data = s; idCounter = Math.max(idCounter, ...getAllIds()); }
+  }catch(e){}
+}
+function getAllIds(){
+  const ids = [];
+  ['tasks','events','contacts','notes'].forEach(k => data[k].forEach(x => ids.push(x.id||0)));
+  return ids.length ? ids : [Date.now()];
+}
+
+// ─── INIT ───
+function init(){
+  load();
+  updateDate();
+  renderAll();
+  setInterval(updateDate, 60000);
+}
+
+function updateDate(){
+  const now = new Date();
+  const h = now.getHours();
+  let greet = 'Good morning';
+  if(h >= 12 && h < 17) greet = 'Good afternoon';
+  if(h >= 17) greet = 'Good evening';
+  document.getElementById('greeting').textContent = greet + ', Suzanne';
+  document.getElementById('todayDate').textContent = now.toLocaleDateString('en-US', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+}
+
+// ─── NAVIGATION ───
+function showPage(page, el){
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  el.classList.add('active');
+  renderAll();
+}
+
+// ─── MODALS ───
+function openModal(type){
+  document.getElementById('modal-'+type).classList.add('show');
+  // Set default date to today
+  const today = new Date().toISOString().split('T')[0];
+  if(type==='task') document.getElementById('newTaskDue').value = today;
+  if(type==='event') document.getElementById('newEventDate').value = today;
+  // Focus first input
+  setTimeout(()=>{
+    const m = document.getElementById('modal-'+type);
+    const inp = m.querySelector('input,textarea');
+    if(inp) inp.focus();
+  },100);
+}
+function closeModal(type){ document.getElementById('modal-'+type).classList.remove('show'); }
+
+// ─── TOAST ───
+function toast(msg){
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),300);},2000);
+}
+
+// ═══ TASKS ═══
+function addTask(){
+  const title = document.getElementById('newTaskTitle').value.trim();
+  if(!title){toast('Please enter a task');return;}
+  data.tasks.push({
+    id: newId(),
+    title,
+    priority: document.getElementById('newTaskPri').value,
+    due: document.getElementById('newTaskDue').value,
+    category: document.getElementById('newTaskCat').value,
+    notes: document.getElementById('newTaskNotes').value.trim(),
+    done: false,
+    created: new Date().toISOString()
+  });
+  save(); closeModal('task'); renderAll();
+  // Clear form
+  document.getElementById('newTaskTitle').value='';
+  document.getElementById('newTaskNotes').value='';
+  toast('Task added!');
+}
+
+function toggleTask(id){
+  const t = data.tasks.find(x=>x.id===id);
+  if(t){ t.done = !t.done; save(); renderAll(); }
+}
+
+function deleteTask(id){
+  data.tasks = data.tasks.filter(x=>x.id!==id);
+  save(); renderAll(); toast('Task removed');
+}
+
+function setTaskFilter(f, el){
+  taskFilter = f;
+  document.querySelectorAll('#page-tasks .filter-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderTasks();
+}
+
+function renderTasks(){
+  const search = (document.getElementById('taskSearch').value||'').toLowerCase();
+  let list = data.tasks.slice();
+
+  if(search) list = list.filter(t => t.title.toLowerCase().includes(search) || (t.notes||'').toLowerCase().includes(search));
+  if(taskFilter==='active') list = list.filter(t=>!t.done);
+  if(taskFilter==='done') list = list.filter(t=>t.done);
+  if(taskFilter==='high') list = list.filter(t=>t.priority==='high'&&!t.done);
+  if(taskFilter==='jordan') list = list.filter(t=>t.category==='jordan'&&!t.done);
+
+  // Sort: undone first, then by priority, then by due date
+  const priOrder = {high:0,medium:1,low:2};
+  list.sort((a,b) => {
+    if(a.done !== b.done) return a.done ? 1 : -1;
+    if(priOrder[a.priority] !== priOrder[b.priority]) return priOrder[a.priority] - priOrder[b.priority];
+    return (a.due||'z').localeCompare(b.due||'z');
+  });
+
+  const c = document.getElementById('taskList');
+  if(list.length===0){
+    c.innerHTML = `<div class="empty"><h3>No tasks here</h3><p>Click "+ New Task" to add one.</p></div>`;
+    return;
+  }
+  c.innerHTML = list.map(t => `
+    <div class="task-item ${t.done?'done':''}">
+      <div class="task-check ${t.done?'checked':''}" onclick="toggleTask(${t.id})">${t.done?'&#10003;':''}</div>
+      <div class="task-content">
+        <div class="task-title">${esc(t.title)}</div>
+        <div class="task-meta">
+          <span class="task-priority ${t.priority}">${t.priority}</span>
+          ${t.due?`<span>Due: ${formatDate(t.due)}</span>`:''}
+          <span>${t.category}</span>
+          ${t.notes?`<span style="color:var(--text)">${esc(t.notes.substring(0,60))}${t.notes.length>60?'...':''}</span>`:''}
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="task-del" onclick="deleteTask(${t.id})" title="Delete">&times;</button>
+      </div>
+    </div>
+  `).join('');
+
+  // Update badge
+  const active = data.tasks.filter(t=>!t.done).length;
+  document.getElementById('taskBadge').textContent = active;
+}
+
+// ═══ SCHEDULE ═══
+function addEvent(){
+  const title = document.getElementById('newEventTitle').value.trim();
+  if(!title){toast('Please enter an event name');return;}
+  data.events.push({
+    id: newId(),
+    title,
+    date: document.getElementById('newEventDate').value,
+    time: document.getElementById('newEventTime').value,
+    type: document.getElementById('newEventType').value,
+    location: document.getElementById('newEventLoc').value.trim(),
+    notes: document.getElementById('newEventNotes').value.trim(),
+    created: new Date().toISOString()
+  });
+  save(); closeModal('event'); renderAll();
+  document.getElementById('newEventTitle').value='';
+  document.getElementById('newEventLoc').value='';
+  document.getElementById('newEventNotes').value='';
+  toast('Event added!');
+}
+
+function deleteEvent(id){
+  data.events = data.events.filter(x=>x.id!==id);
+  save(); renderSchedule(); toast('Event removed');
+}
+
+function changeDay(d){
+  if(d===0) viewDate = new Date();
+  else viewDate.setDate(viewDate.getDate()+d);
+  renderSchedule();
+}
+
+function renderSchedule(){
+  const dateStr = viewDate.toISOString().split('T')[0];
+  document.getElementById('scheduleDate').textContent = viewDate.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  let list = data.events.filter(e=>e.date===dateStr);
+  list.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+
+  const c = document.getElementById('scheduleList');
+  if(list.length===0){
+    c.innerHTML = `<div class="empty"><h3>Nothing scheduled</h3><p>Click "+ New Event" to add something for this day.</p></div>`;
+    return;
+  }
+  c.innerHTML = list.map(e => `
+    <div class="schedule-item ${e.type}">
+      <div class="schedule-time">${e.time?formatTime(e.time):'Anytime'}</div>
+      <div class="schedule-detail">
+        <div class="schedule-title">${esc(e.title)}</div>
+        <div class="schedule-notes">
+          ${e.type?`<span style="text-transform:capitalize">${e.type}</span>`:''}
+          ${e.location?` &middot; ${esc(e.location)}`:''}
+          ${e.notes?`<br>${esc(e.notes)}`:''}
+        </div>
+      </div>
+      <button class="task-del" onclick="deleteEvent(${e.id})" title="Remove">&times;</button>
+    </div>
+  `).join('');
+}
+
+// ═══ CONTACTS ═══
+function addContact(){
+  const name = document.getElementById('newContactName').value.trim();
+  if(!name){toast('Please enter a name');return;}
+  data.contacts.push({
+    id: newId(),
+    name,
+    role: document.getElementById('newContactRole').value.trim(),
+    phone: document.getElementById('newContactPhone').value.trim(),
+    email: document.getElementById('newContactEmail').value.trim(),
+    org: document.getElementById('newContactOrg').value.trim(),
+    notes: document.getElementById('newContactNotes').value.trim(),
+    tags: document.getElementById('newContactTags').value.split(',').map(s=>s.trim()).filter(Boolean),
+    created: new Date().toISOString()
+  });
+  save(); closeModal('contact'); renderAll();
+  ['Name','Role','Phone','Email','Org','Notes','Tags'].forEach(f=>document.getElementById('newContact'+f).value='');
+  toast('Contact added!');
+}
+
+function deleteContact(id){
+  data.contacts = data.contacts.filter(x=>x.id!==id);
+  save(); renderContacts(); toast('Contact removed');
+}
+
+function renderContacts(){
+  const search = (document.getElementById('contactSearch').value||'').toLowerCase();
+  let list = data.contacts.slice();
+  if(search) list = list.filter(c => c.name.toLowerCase().includes(search) || (c.role||'').toLowerCase().includes(search) || (c.org||'').toLowerCase().includes(search) || (c.notes||'').toLowerCase().includes(search) || (c.tags||[]).some(t=>t.toLowerCase().includes(search)));
+
+  list.sort((a,b)=>a.name.localeCompare(b.name));
+
+  const c = document.getElementById('contactList');
+  if(list.length===0){
+    c.innerHTML = `<div class="empty" style="grid-column:1/-1"><h3>No contacts yet</h3><p>Click "+ New Contact" to add someone.</p></div>`;
+    return;
+  }
+  c.innerHTML = list.map(ct => `
+    <div class="contact-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="contact-name">${esc(ct.name)}</div>
+          <div class="contact-role">${esc(ct.role||'')}${ct.org?` at ${esc(ct.org)}`:''}</div>
+        </div>
+        <button class="task-del" onclick="deleteContact(${ct.id})" title="Remove">&times;</button>
+      </div>
+      ${ct.phone?`<div class="contact-info">&#128222; ${esc(ct.phone)}</div>`:''}
+      ${ct.email?`<div class="contact-info">&#9993; ${esc(ct.email)}</div>`:''}
+      ${ct.notes?`<div class="contact-notes">${esc(ct.notes)}</div>`:''}
+      ${ct.tags&&ct.tags.length?`<div class="note-tags">${ct.tags.map(t=>`<span class="contact-tag">${esc(t)}</span>`).join('')}</div>`:''}
+    </div>
+  `).join('');
+}
+
+// ═══ NOTES ═══
+function addNote(){
+  const title = document.getElementById('newNoteTitle').value.trim();
+  const text = document.getElementById('newNoteText').value.trim();
+  if(!text){toast('Please write something');return;}
+  data.notes.push({
+    id: newId(),
+    title: title || 'Untitled Note',
+    text,
+    category: document.getElementById('newNoteCat').value,
+    contact: document.getElementById('newNoteContact').value.trim(),
+    created: new Date().toISOString()
+  });
+  save(); closeModal('note'); renderAll();
+  ['Title','Text','Contact'].forEach(f=>document.getElementById('newNote'+f).value='');
+  toast('Note saved!');
+}
+
+function deleteNote(id){
+  data.notes = data.notes.filter(x=>x.id!==id);
+  save(); renderNotes(); toast('Note removed');
+}
+
+function setNoteFilter(f, el){
+  noteFilter = f;
+  document.querySelectorAll('#page-notes .filter-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderNotes();
+}
+
+function renderNotes(){
+  const search = (document.getElementById('noteSearch').value||'').toLowerCase();
+  let list = data.notes.slice();
+  if(search) list = list.filter(n => n.title.toLowerCase().includes(search) || n.text.toLowerCase().includes(search) || (n.contact||'').toLowerCase().includes(search));
+  if(noteFilter!=='all') list = list.filter(n=>n.category===noteFilter);
+
+  list.sort((a,b)=>new Date(b.created)-new Date(a.created));
+
+  const c = document.getElementById('noteList');
+  if(list.length===0){
+    c.innerHTML = `<div class="empty"><h3>No notes here</h3><p>Click "+ New Note" to write one.</p></div>`;
+    return;
+  }
+  c.innerHTML = list.map(n => `
+    <div class="note-item">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <strong style="font-size:15px">${esc(n.title)}</strong>
+          <span class="contact-tag" style="margin-left:8px">${n.category}</span>
+          ${n.contact?`<span class="contact-tag">${esc(n.contact)}</span>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="note-date">${formatDateTime(n.created)}</span>
+          <button class="task-del" onclick="deleteNote(${n.id})">&times;</button>
+        </div>
+      </div>
+      <div class="note-text">${esc(n.text)}</div>
+    </div>
+  `).join('');
+}
+
+// ═══ DASHBOARD ═══
+function renderDashboard(){
+  const today = new Date().toISOString().split('T')[0];
+  const activeTasks = data.tasks.filter(t=>!t.done);
+  const urgentTasks = activeTasks.filter(t=>t.priority==='high');
+  const todayEvents = data.events.filter(e=>e.date===today);
+
+  document.getElementById('dashTasks').textContent = activeTasks.length;
+  document.getElementById('dashUrgent').textContent = urgentTasks.length;
+  document.getElementById('dashEvents').textContent = todayEvents.length;
+  document.getElementById('dashContacts').textContent = data.contacts.length;
+
+  // Today's schedule
+  const ds = document.getElementById('dashSchedule');
+  if(todayEvents.length){
+    todayEvents.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+    ds.innerHTML = todayEvents.slice(0,5).map(e=>`
+      <div class="schedule-item ${e.type}" style="margin-bottom:6px">
+        <div class="schedule-time">${e.time?formatTime(e.time):'—'}</div>
+        <div class="schedule-detail"><div class="schedule-title">${esc(e.title)}</div></div>
+      </div>
+    `).join('');
+  } else {
+    ds.innerHTML = `<div style="color:var(--dim);font-size:13px;padding:8px">No events today.</div>`;
+  }
+
+  // Top tasks
+  const dt = document.getElementById('dashTopTasks');
+  if(urgentTasks.length){
+    dt.innerHTML = urgentTasks.slice(0,5).map(t=>`
+      <div class="task-item" style="margin-bottom:4px">
+        <div class="task-check" onclick="toggleTask(${t.id})"></div>
+        <div class="task-content">
+          <div class="task-title">${esc(t.title)}</div>
+          <div class="task-meta"><span class="task-priority high">high</span>${t.due?`<span>Due: ${formatDate(t.due)}</span>`:''}</div>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    dt.innerHTML = `<div style="color:var(--dim);font-size:13px;padding:8px">No urgent tasks. You're on top of it!</div>`;
+  }
+
+  // Recent notes
+  const dn = document.getElementById('dashRecentNotes');
+  const recent = data.notes.slice().sort((a,b)=>new Date(b.created)-new Date(a.created)).slice(0,3);
+  if(recent.length){
+    dn.innerHTML = recent.map(n=>`
+      <div class="note-item" style="margin-bottom:6px">
+        <strong>${esc(n.title)}</strong> <span class="contact-tag">${n.category}</span>
+        <div style="font-size:12px;color:var(--dim);margin-top:4px">${esc(n.text.substring(0,100))}${n.text.length>100?'...':''}</div>
+      </div>
+    `).join('');
+  } else {
+    dn.innerHTML = `<div style="color:var(--dim);font-size:13px;padding:8px">No notes yet.</div>`;
+  }
+}
+
+// ═══ RENDER ALL ═══
+function renderAll(){
+  renderTasks();
+  renderSchedule();
+  renderContacts();
+  renderNotes();
+  renderDashboard();
+}
+
+// ═══ HELPERS ═══
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}
+function formatDate(d){
+  if(!d) return '';
+  const dt = new Date(d+'T12:00:00');
+  return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+function formatTime(t){
+  if(!t) return '';
+  const [h,m] = t.split(':');
+  const hr = parseInt(h);
+  const ampm = hr>=12?'PM':'AM';
+  return `${hr%12||12}:${m} ${ampm}`;
+}
+function formatDateTime(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+
+// ─── KEYBOARD ───
+document.addEventListener('keydown', e => {
+  if(e.key==='Escape'){
+    ['task','event','contact','note'].forEach(t=>closeModal(t));
+  }
+});
+
+// ─── CLICK OUTSIDE MODAL TO CLOSE ───
+document.querySelectorAll('.modal-bg').forEach(bg=>{
+  bg.addEventListener('click',e=>{
+    if(e.target===bg) bg.classList.remove('show');
+  });
+});
+
+// ─── BOOT ───
+init();
+</script>
+</body>
+</html>

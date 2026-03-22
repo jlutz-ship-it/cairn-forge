@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>FARM FORGE v2 — MT4GE</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#050510; overflow:hidden; font-family:'Courier New',monospace; color:#e0e8f0; }
+canvas { display:block; cursor:crosshair; }
+#loading { position:fixed; top:0; left:0; width:100%; height:100%; background:#050510;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:999; }
+#loading h1 { color:#ffaa33; font-size:32px; margin-bottom:20px; text-shadow:0 0 20px rgba(255,170,51,0.5); }
+#loading .bar { width:300px; height:8px; background:rgba(255,255,255,0.1); border-radius:4px; }
+#loading .fill { height:100%; background:#ffaa33; border-radius:4px; transition:width 0.3s; }
+#loading p { color:#8090a0; margin-top:10px; font-size:14px; }
+
+/* Overlay screens */
+.overlay { position:fixed; top:0; left:0; width:100%; height:100%; display:flex;
+  flex-direction:column; align-items:center; justify-content:center; z-index:500;
+  background:rgba(5,5,16,0.92); }
+.overlay h1 { color:#ffaa33; font-size:36px; margin-bottom:10px; text-shadow:0 0 20px rgba(255,170,51,0.5); }
+.overlay h2 { color:#8090a0; font-size:16px; margin-bottom:30px; font-weight:normal; }
+.overlay .btn { display:block; width:280px; padding:14px; margin:6px auto; background:rgba(255,170,51,0.1);
+  border:1px solid rgba(255,170,51,0.3); color:#ffaa33; font-family:inherit; font-size:16px;
+  cursor:pointer; text-align:center; transition:all 0.15s; }
+.overlay .btn:hover { background:rgba(255,170,51,0.25); border-color:#ffaa33; transform:scale(1.02); }
+.overlay .btn.disabled { opacity:0.3; pointer-events:none; }
+.overlay .info { color:#8090a0; font-size:13px; margin-top:15px; text-align:center; line-height:1.6; }
+.overlay .price { color:#ffaa33; }
+.overlay .owned { color:#33ff88; font-size:12px; }
+
+/* Seed selector bar */
+#seedBar { position:fixed; bottom:70px; left:50%; transform:translateX(-50%); display:none;
+  background:rgba(10,15,25,0.95); border:1px solid rgba(255,170,51,0.3); border-radius:6px;
+  padding:8px 12px; z-index:400; white-space:nowrap; }
+#seedBar span { display:inline-block; padding:6px 14px; margin:0 3px; cursor:pointer;
+  border:1px solid rgba(255,170,51,0.2); border-radius:4px; font-size:12px; color:#8090a0;
+  transition:all 0.15s; }
+#seedBar span:hover { border-color:#ffaa33; color:#ffaa33; }
+#seedBar span.sel { background:rgba(255,170,51,0.2); border-color:#ffaa33; color:#ffaa33; }
+
+/* Notification toast */
+#toasts { position:fixed; top:80px; right:20px; z-index:600; }
+.toast { padding:10px 18px; margin-bottom:8px; border-radius:4px; font-size:13px;
+  animation:toastIn 0.3s ease; }
+.toast.success { background:rgba(51,255,136,0.15); border:1px solid rgba(51,255,136,0.3); color:#33ff88; }
+.toast.error { background:rgba(255,51,102,0.15); border:1px solid rgba(255,51,102,0.3); color:#ff3366; }
+.toast.info { background:rgba(0,229,255,0.15); border:1px solid rgba(0,229,255,0.3); color:#00e5ff; }
+.toast.warning { background:rgba(255,170,51,0.15); border:1px solid rgba(255,170,51,0.3); color:#ffaa33; }
+@keyframes toastIn { from { opacity:0; transform:translateX(30px); } to { opacity:1; transform:translateX(0); } }
+</style>
+</head>
+<body>
+<div id="loading">
+  <h1>FARM FORGE v2</h1>
+  <div class="bar"><div class="fill" id="loadBar" style="width:0%"></div></div>
+  <p id="loadMsg">Preparing fields...</p>
+</div>
+<canvas id="game"></canvas>
+<div id="toasts"></div>
+<div id="seedBar"></div>
+
+<script>
+(function(){
+"use strict";
+
+// ── Audio Engine (Web Audio API) ────────────────────────────
+var audioCtx = null;
+function initAudio() {
+    if(audioCtx) return;
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+}
+function playTone(freq, dur, type, vol) {
+    if(!audioCtx) return;
+    var o = audioCtx.createOscillator();
+    var g = audioCtx.createGain();
+    o.type = type || "square";
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(vol || 0.1, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+}
+function sfxDig() { playTone(120, 0.15, "triangle", 0.12); setTimeout(function(){ playTone(80, 0.1, "triangle", 0.08); }, 60); }
+function sfxWater() { playTone(800, 0.3, "sine", 0.06); playTone(600, 0.25, "sine", 0.04); }
+function sfxPlant() { playTone(440, 0.1, "sine", 0.08); setTimeout(function(){ playTone(660, 0.1, "sine", 0.06); }, 80); }
+function sfxHarvest() { playTone(523, 0.1, "sine", 0.1); setTimeout(function(){ playTone(659, 0.1, "sine", 0.1); }, 100); setTimeout(function(){ playTone(784, 0.15, "sine", 0.1); }, 200); }
+function sfxBuy() { playTone(600, 0.08, "square", 0.06); setTimeout(function(){ playTone(800, 0.12, "square", 0.06); }, 80); }
+function sfxSell() { playTone(800, 0.1, "square", 0.08); setTimeout(function(){ playTone(1000, 0.1, "square", 0.08); }, 80); setTimeout(function(){ playTone(1200, 0.15, "square", 0.08); }, 160); }
+function sfxError() { playTone(200, 0.15, "square", 0.1); setTimeout(function(){ playTone(150, 0.2, "square", 0.1); }, 120); }
+function sfxClick() { playTone(1000, 0.05, "square", 0.05); }
+function sfxAnimal() { playTone(300, 0.2, "sawtooth", 0.05); }
+function sfxNewDay() { playTone(392, 0.15, "sine", 0.08); setTimeout(function(){ playTone(523, 0.15, "sine", 0.08); }, 150); setTimeout(function(){ playTone(659, 0.2, "sine", 0.1); }, 300); }
+function sfxEquip() { playTone(500, 0.1, "triangle", 0.1); setTimeout(function(){ playTone(700, 0.1, "triangle", 0.1); }, 100); setTimeout(function(){ playTone(900, 0.15, "triangle", 0.1); }, 200); }
+
+// ── Toast System ────────────────────────────────────────────
+function toast(msg, type, dur) {
+    var el = document.createElement("div");
+    el.className = "toast " + (type || "info");
+    el.textContent = msg;
+    document.getElementById("toasts").appendChild(el);
+    setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, dur || 3000);
+}
+
+// ── Canvas Setup ────────────────────────────────────────────
+var canvas = document.getElementById("game");
+var ctx = canvas.getContext("2d");
+var W, H;
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+window.addEventListener("resize", resize);
+resize();
+
+// ── Game State ──────────────────────────────────────────────
+var STATE = { LOADING: 0, MENU: 1, PLAYING: 2, PAUSED: 3, SHOP: 4, BARN: 5 };
+var state = STATE.LOADING;
+
+var farm = {
+    money: 2000,
+    day: 1,
+    season: "spring",
+    seasonDay: 1,
+    timeOfDay: 6.0, // hours
+    energy: 100,
+    maxEnergy: 100,
+    plots: [],
+    animals: [],
+    barn: { hay: 50, feed: 50, milk: 0, eggs: 0, wool: 0 },
+    equipment: { tractor: false, sprinkler: false, harvester: false },
+    selectedTool: 0,
+    selectedSeed: "wheat",
+    tools: ["Hoe", "Seeds", "Water", "Harvest", "Axe", "Feed"],
+    totalHarvested: 0,
+    totalEarned: 0,
+    daysPlayed: 0
+};
+
+var crops = {
+    wheat:   { growTime: 4, sellPrice: 30,  seedCost: 5,  stages: 4, color: "#e6cc4d", seasons: ["spring","summer","fall"] },
+    corn:    { growTime: 6, sellPrice: 50,  seedCost: 10, stages: 4, color: "#33b344", seasons: ["summer"] },
+    potato:  { growTime: 5, sellPrice: 40,  seedCost: 8,  stages: 3, color: "#8c5a33", seasons: ["spring","fall"] },
+    tomato:  { growTime: 4, sellPrice: 35,  seedCost: 7,  stages: 4, color: "#cc2626", seasons: ["summer"] },
+    carrot:  { growTime: 3, sellPrice: 25,  seedCost: 4,  stages: 3, color: "#e68a19", seasons: ["spring","fall"] },
+    pumpkin: { growTime: 8, sellPrice: 80,  seedCost: 15, stages: 5, color: "#cc7a19", seasons: ["fall"] }
+};
+
+var animalDefs = {
+    cow:     { cost: 500, produce: "milk", produceAmt: 3, produceCycle: 1, feedRate: 2, emoji: "C", color: "#a0522d" },
+    chicken: { cost: 100, produce: "eggs", produceAmt: 2, produceCycle: 1, feedRate: 1, emoji: "K", color: "#ffd700" },
+    sheep:   { cost: 300, produce: "wool", produceAmt: 1, produceCycle: 3, feedRate: 1, emoji: "S", color: "#ddd" }
+};
+
+var equipmentDefs = {
+    tractor:   { cost: 2000, desc: "Auto-tills 4 plots/day", icon: "T" },
+    sprinkler: { cost: 1500, desc: "Auto-waters all planted crops", icon: "W" },
+    harvester: { cost: 3000, desc: "Auto-harvests ready crops", icon: "H" }
+};
+
+var produceValues = { milk: 15, eggs: 8, wool: 25, hay: 3, feed: 5 };
+
+// Season price multipliers
+var seasonMults = {
+    spring: { wheat: 1.0, corn: 0.8, potato: 1.1, tomato: 0.9, carrot: 1.2, pumpkin: 0.7 },
+    summer: { wheat: 0.9, corn: 1.2, potato: 0.8, tomato: 1.3, carrot: 0.7, pumpkin: 0.8 },
+    fall:   { wheat: 1.1, corn: 1.0, potato: 1.2, tomato: 0.8, carrot: 1.0, pumpkin: 1.5 },
+    winter: { wheat: 1.3, corn: 1.1, potato: 1.3, tomato: 1.5, carrot: 1.4, pumpkin: 1.2 }
+};
+
+// Weather
+var weather = "clear"; // clear, rain, storm, drought
+var weatherDays = 0;
+
+// ── Plot Grid ───────────────────────────────────────────────
+var GRID = 8;
+var plotSize = 0;
+var plotStartX = 0, plotStartY = 0;
+
+function initPlots() {
+    farm.plots = [];
+    for(var r = 0; r < GRID; r++) {
+        for(var c = 0; c < GRID; c++) {
+            farm.plots.push({
+                r: r, c: c,
+                tilled: false, planted: null,
+                watered: false, growthDay: 0,
+                stage: 0, ready: false, quality: 1.0
+            });
+        }
+    }
+}
+initPlots();
+
+// Starting animals
+farm.animals.push({ type: "chicken", name: "Clucky", daysSinceProduce: 0, health: 100, fed: true });
+farm.animals.push({ type: "chicken", name: "Pecky", daysSinceProduce: 0, health: 100, fed: true });
+
+// ── Particles ───────────────────────────────────────────────
+var particles = [];
+function spawnParticles(x, y, color, count) {
+    for(var i = 0; i < (count || 6); i++) {
+        particles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: -Math.random() * 3 - 1,
+            life: 1.0, color: color, size: 2 + Math.random() * 3
+        });
+    }
+}
+function updateParticles(dt) {
+    for(var i = particles.length - 1; i >= 0; i--) {
+        var p = particles[i];
+        p.x += p.vx * dt * 60;
+        p.y += p.vy * dt * 60;
+        p.vy += 0.05;
+        p.life -= dt * 1.5;
+        if(p.life <= 0) particles.splice(i, 1);
+    }
+}
+function drawParticles() {
+    for(var i = 0; i < particles.length; i++) {
+        var p = particles[i];
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ── Input ───────────────────────────────────────────────────
+var keys = {};
+var mouse = { x: 0, y: 0, down: false, clicked: false };
+document.addEventListener("keydown", function(e) {
+    keys[e.key.toLowerCase()] = true;
+    initAudio();
+    if(state === STATE.PLAYING) {
+        if(e.key === "Escape" || e.key.toLowerCase() === "p") { state = STATE.PAUSED; sfxClick(); }
+        if(e.key >= "1" && e.key <= "6") { farm.selectedTool = parseInt(e.key) - 1; sfxClick(); }
+        if(e.key.toLowerCase() === "e") { openShop(); }
+        if(e.key.toLowerCase() === "b") { openBarn(); }
+        if(e.key.toLowerCase() === "n") { nextDay(); }
+        if(e.key.toLowerCase() === "q") { cycleSeed(-1); }
+        if(e.key.toLowerCase() === "r") { cycleSeed(1); }
+    } else if(state === STATE.PAUSED) {
+        if(e.key === "Escape" || e.key.toLowerCase() === "p") { state = STATE.PLAYING; sfxClick(); }
+    } else if(state === STATE.SHOP || state === STATE.BARN) {
+        if(e.key === "Escape") { state = STATE.PLAYING; sfxClick(); }
+    }
+});
+document.addEventListener("keyup", function(e) { keys[e.key.toLowerCase()] = false; });
+canvas.addEventListener("mousemove", function(e) { mouse.x = e.clientX; mouse.y = e.clientY; });
+canvas.addEventListener("mousedown", function(e) {
+    mouse.down = true; mouse.clicked = true; initAudio();
+});
+canvas.addEventListener("mouseup", function(e) { mouse.down = false; });
+canvas.addEventListener("touchstart", function(e) {
+    e.preventDefault(); initAudio();
+    var t = e.touches[0]; mouse.x = t.clientX; mouse.y = t.clientY;
+    mouse.down = true; mouse.clicked = true;
+}, { passive: false });
+canvas.addEventListener("touchend", function(e) { mouse.down = false; });
+
+var seedNames = Object.keys(crops);
+function cycleSeed(dir) {
+    var idx = seedNames.indexOf(farm.selectedSeed);
+    idx = (idx + dir + seedNames.length) % seedNames.length;
+    farm.selectedSeed = seedNames[idx];
+    sfxClick();
+    updateSeedBar();
+}
+
+// ── Seed Bar ────────────────────────────────────────────────
+var seedBarEl = document.getElementById("seedBar");
+function buildSeedBar() {
+    seedBarEl.innerHTML = "";
+    for(var i = 0; i < seedNames.length; i++) {
+        var s = document.createElement("span");
+        s.textContent = seedNames[i].charAt(0).toUpperCase() + seedNames[i].slice(1) + " $" + crops[seedNames[i]].seedCost;
+        s.setAttribute("data-seed", seedNames[i]);
+        (function(name) {
+            s.addEventListener("click", function() {
+                farm.selectedSeed = name; sfxClick(); updateSeedBar();
+            });
+        })(seedNames[i]);
+        seedBarEl.appendChild(s);
+    }
+    updateSeedBar();
+}
+function updateSeedBar() {
+    var spans = seedBarEl.querySelectorAll("span");
+    for(var i = 0; i < spans.length; i++) {
+        spans[i].className = spans[i].getAttribute("data-seed") === farm.selectedSeed ? "sel" : "";
+    }
+}
+buildSeedBar();
+
+// ── Overlay System ──────────────────────────────────────────
+var overlays = {};
+function createOverlay(id, content) {
+    var el = document.createElement("div");
+    el.className = "overlay";
+    el.id = "ov_" + id;
+    el.style.display = "none";
+    el.innerHTML = content;
+    document.body.appendChild(el);
+    overlays[id] = el;
+    return el;
+}
+function showOverlay(id) { if(overlays[id]) overlays[id].style.display = "flex"; }
+function hideOverlay(id) { if(overlays[id]) overlays[id].style.display = "none"; }
+function hideAllOverlays() { for(var k in overlays) overlays[k].style.display = "none"; }
+
+// ── Menu Overlay ────────────────────────────────────────────
+createOverlay("menu",
+    '<h1>FARM FORGE</h1>' +
+    '<h2>Miskulin Technologies — MT4GE</h2>' +
+    '<div class="btn" id="btnNewDay">NEW DAY</div>' +
+    '<div class="btn" id="btnContinue" style="display:none">CONTINUE</div>' +
+    '<div class="btn" id="btnLoad">LOAD SAVE</div>' +
+    '<div class="info">WASD / Arrows — Move camera<br>1-6 — Select tool | Q/R — Cycle seeds<br>Click — Use tool on plot<br>E — Shop | B — Barn | N — Next day | P — Pause</div>'
+);
+
+// ── Pause Overlay ───────────────────────────────────────────
+createOverlay("pause",
+    '<h1>PAUSED</h1>' +
+    '<div class="btn" id="btnResume">RESUME</div>' +
+    '<div class="btn" id="btnSave">SAVE GAME</div>' +
+    '<div class="btn" id="btnQuit">SAVE & QUIT</div>'
+);
+
+// ── Shop Overlay (built dynamically) ────────────────────────
+createOverlay("shop", '<h1>GENERAL STORE</h1><div id="shopContent"></div><div class="btn" id="btnShopClose">CLOSE [ESC]</div>');
+
+// ── Barn Overlay ────────────────────────────────────────────
+createOverlay("barn", '<h1>BARN</h1><div id="barnContent"></div><div class="btn" id="btnBarnClose">CLOSE [ESC]</div>');
+
+// ── Wire up buttons ─────────────────────────────────────────
+function wireBtn(id, fn) {
+    var el = document.getElementById(id);
+    if(el) el.addEventListener("click", function(e) { e.stopPropagation(); fn(); });
+}
+
+wireBtn("btnNewDay", function() {
+    hideOverlay("menu"); state = STATE.PLAYING; sfxNewDay();
+});
+wireBtn("btnContinue", function() {
+    hideOverlay("menu"); state = STATE.PLAYING; sfxClick();
+});
+wireBtn("btnLoad", function() { loadGame(); hideOverlay("menu"); state = STATE.PLAYING; sfxClick(); });
+wireBtn("btnResume", function() { hideOverlay("pause"); state = STATE.PLAYING; sfxClick(); });
+wireBtn("btnSave", function() { saveGame(); toast("Game saved!", "success"); sfxClick(); });
+wireBtn("btnQuit", function() { saveGame(); hideOverlay("pause"); showOverlay("menu"); state = STATE.MENU;
+    document.getElementById("btnContinue").style.display = "block"; sfxClick(); });
+wireBtn("btnShopClose", function() { hideOverlay("shop"); state = STATE.PLAYING; sfxClick(); });
+wireBtn("btnBarnClose", function() { hideOverlay("barn"); state = STATE.PLAYING; sfxClick(); });
+
+// ── Shop Logic ──────────────────────────────────────────────
+function openShop() {
+    state = STATE.SHOP;
+    var html = '<div style="max-height:60vh;overflow-y:auto;padding:10px;">';
+
+    // Seeds
+    html += '<div style="color:#8090a0;font-size:13px;margin:10px 0 5px;">SEEDS (x10 pack)</div>';
+    for(var sn in crops) {
+        var c = crops[sn];
+        var inSeason = c.seasons.indexOf(farm.season) >= 0;
+        var label = sn.charAt(0).toUpperCase() + sn.slice(1);
+        var seasonTag = inSeason ? ' <span style="color:#33ff88;font-size:11px;">IN SEASON</span>' : ' <span style="color:#ff3366;font-size:11px;">OFF SEASON</span>';
+        html += '<div class="btn" onclick="window._shopBuy(\'seed\',\'' + sn + '\')">' + label + ' Seeds x10 — <span class="price">$' + (c.seedCost * 10) + '</span>' + seasonTag + '</div>';
+    }
+
+    // Animals
+    html += '<div style="color:#8090a0;font-size:13px;margin:15px 0 5px;">ANIMALS</div>';
+    for(var an in animalDefs) {
+        var a = animalDefs[an];
+        var label2 = an.charAt(0).toUpperCase() + an.slice(1);
+        html += '<div class="btn" onclick="window._shopBuy(\'animal\',\'' + an + '\')">' + label2 + ' — <span class="price">$' + a.cost + '</span> (produces ' + a.produce + ')</div>';
+    }
+
+    // Equipment
+    html += '<div style="color:#8090a0;font-size:13px;margin:15px 0 5px;">EQUIPMENT</div>';
+    for(var eq in equipmentDefs) {
+        var ed = equipmentDefs[eq];
+        var owned = farm.equipment[eq];
+        if(owned) {
+            html += '<div class="btn disabled">' + eq.charAt(0).toUpperCase() + eq.slice(1) + ' — <span class="owned">OWNED</span> (' + ed.desc + ')</div>';
+        } else {
+            html += '<div class="btn" onclick="window._shopBuy(\'equip\',\'' + eq + '\')">' + eq.charAt(0).toUpperCase() + eq.slice(1) + ' — <span class="price">$' + ed.cost + '</span> (' + ed.desc + ')</div>';
+        }
+    }
+
+    // Supplies
+    html += '<div style="color:#8090a0;font-size:13px;margin:15px 0 5px;">SUPPLIES</div>';
+    html += '<div class="btn" onclick="window._shopBuy(\'supply\',\'hay\')">Hay x20 — <span class="price">$60</span></div>';
+    html += '<div class="btn" onclick="window._shopBuy(\'supply\',\'feed\')">Feed x20 — <span class="price">$100</span></div>';
+
+    html += '</div>';
+    document.getElementById("shopContent").innerHTML = html;
+    showOverlay("shop");
+    sfxClick();
+}
+
+window._shopBuy = function(type, item) {
+    initAudio();
+    if(type === "seed") {
+        var cost = crops[item].seedCost * 10;
+        if(farm.money >= cost) { farm.money -= cost; sfxBuy(); toast("Bought " + item + " seeds x10 (-$" + cost + ")", "success"); }
+        else { sfxError(); toast("Not enough money!", "error"); }
+    } else if(type === "animal") {
+        var ad = animalDefs[item];
+        if(farm.money >= ad.cost) {
+            farm.money -= ad.cost;
+            var names = { cow: ["Bessie","Daisy","Moo","Bella","Rosie"], chicken: ["Clucky","Pecky","Nugget","Flapper","Goldie"], sheep: ["Woolly","Baaabs","Fluffy","Cotton","Shear"] };
+            var n = (names[item] || ["Pal"])[farm.animals.length % 5];
+            farm.animals.push({ type: item, name: n + "_" + farm.animals.length, daysSinceProduce: 0, health: 100, fed: true });
+            sfxBuy(); sfxAnimal();
+            toast("Bought a " + item + "! (" + n + ")", "success");
+        } else { sfxError(); toast("Not enough money!", "error"); }
+    } else if(type === "equip") {
+        var eqd = equipmentDefs[item];
+        if(farm.money >= eqd.cost) {
+            farm.money -= eqd.cost; farm.equipment[item] = true;
+            sfxEquip(); toast("Bought " + item + "! " + eqd.desc, "success");
+            openShop(); // refresh
+        } else { sfxError(); toast("Not enough money!", "error"); }
+    } else if(type === "supply") {
+        if(item === "hay" && farm.money >= 60) { farm.money -= 60; farm.barn.hay += 20; sfxBuy(); toast("+20 hay", "success"); }
+        else if(item === "feed" && farm.money >= 100) { farm.money -= 100; farm.barn.feed += 20; sfxBuy(); toast("+20 feed", "success"); }
+        else { sfxError(); toast("Not enough money!", "error"); }
+    }
+};
+
+// ── Barn View ───────────────────────────────────────────────
+function openBarn() {
+    state = STATE.BARN;
+    var html = '<div style="max-height:60vh;overflow-y:auto;padding:10px;">';
+
+    // Produce
+    html += '<div style="color:#8090a0;font-size:13px;margin:10px 0 5px;">PRODUCE (sell prices)</div>';
+    html += '<div style="color:#e0e8f0;font-size:14px;line-height:2;">';
+    html += 'Milk: ' + farm.barn.milk + ' ($' + produceValues.milk + '/ea)<br>';
+    html += 'Eggs: ' + farm.barn.eggs + ' ($' + produceValues.eggs + '/ea)<br>';
+    html += 'Wool: ' + farm.barn.wool + ' ($' + produceValues.wool + '/ea)<br>';
+    html += '</div>';
+
+    var totalValue = farm.barn.milk * produceValues.milk + farm.barn.eggs * produceValues.eggs + farm.barn.wool * produceValues.wool;
+    html += '<div class="btn" onclick="window._sellProduce()">SELL ALL PRODUCE — <span class="price">$' + totalValue + '</span></div>';
+
+    // Supplies
+    html += '<div style="color:#8090a0;font-size:13px;margin:15px 0 5px;">SUPPLIES</div>';
+    html += '<div style="color:#e0e8f0;font-size:14px;line-height:2;">';
+    html += 'Hay: ' + farm.barn.hay + '<br>';
+    html += 'Feed: ' + farm.barn.feed + '<br>';
+    html += '</div>';
+
+    // Animals
+    html += '<div style="color:#8090a0;font-size:13px;margin:15px 0 5px;">ANIMALS (' + farm.animals.length + ')</div>';
+    for(var i = 0; i < farm.animals.length; i++) {
+        var a = farm.animals[i];
+        var def = animalDefs[a.type];
+        var fedStr = a.fed ? '<span style="color:#33ff88;">Fed</span>' : '<span style="color:#ff3366;">Hungry</span>';
+        html += '<div style="color:#e0e8f0;font-size:13px;padding:4px 0;">[' + def.emoji + '] ' + a.name + ' — HP:' + a.health + ' ' + fedStr + '</div>';
+    }
+
+    html += '</div>';
+    document.getElementById("barnContent").innerHTML = html;
+    showOverlay("barn");
+    sfxClick();
+}
+
+window._sellProduce = function() {
+    initAudio();
+    var total = 0;
+    total += farm.barn.milk * produceValues.milk; farm.barn.milk = 0;
+    total += farm.barn.eggs * produceValues.eggs; farm.barn.eggs = 0;
+    total += farm.barn.wool * produceValues.wool; farm.barn.wool = 0;
+    if(total > 0) {
+        farm.money += total; farm.totalEarned += total;
+        sfxSell(); toast("Sold produce for $" + total + "!", "success");
+        openBarn(); // refresh
+    } else { sfxError(); toast("Nothing to sell!", "warning"); }
+};
+
+// ── Next Day ────────────────────────────────────────────────
+function nextDay() {
+    farm.day++;
+    farm.daysPlayed++;
+    farm.energy = farm.maxEnergy;
+    farm.timeOfDay = 6;
+
+    // Season cycle (28 days per season)
+    var seasons = ["spring", "summer", "fall", "winter"];
+    var sIdx = Math.floor((farm.day - 1) / 28) % 4;
+    var newSeason = seasons[sIdx];
+    if(newSeason !== farm.season) {
+        toast("Season changed: " + newSeason.toUpperCase() + "!", "warning", 4000);
+    }
+    farm.season = newSeason;
+    farm.seasonDay = ((farm.day - 1) % 28) + 1;
+
+    // Weather
+    var wr = Math.random();
+    if(wr < 0.15) { weather = "rain"; weatherDays = 1 + Math.floor(Math.random() * 3); }
+    else if(wr < 0.2) { weather = "storm"; weatherDays = 1; }
+    else if(wr < 0.25 && farm.season === "summer") { weather = "drought"; weatherDays = 2 + Math.floor(Math.random() * 3); }
+    else if(weatherDays > 0) { weatherDays--; if(weatherDays <= 0) weather = "clear"; }
+    else { weather = "clear"; }
+
+    // Grow crops
+    for(var i = 0; i < farm.plots.length; i++) {
+        var plot = farm.plots[i];
+        if(plot.planted) {
+            var wasWatered = plot.watered || weather === "rain" || weather === "storm";
+            if(farm.equipment.sprinkler) wasWatered = true;
+
+            if(wasWatered) {
+                var cropInfo = crops[plot.planted];
+                var growRate = 1.0;
+                // Season bonus
+                if(cropInfo.seasons.indexOf(farm.season) >= 0) growRate = 1.2;
+                // Winter penalty
+                if(farm.season === "winter") growRate = 0.3;
+                // Rain bonus
+                if(weather === "rain") growRate *= 1.1;
+                // Storm damage
+                if(weather === "storm" && Math.random() < 0.15) {
+                    plot.planted = null; plot.tilled = false; plot.ready = false;
+                    continue;
+                }
+                // Drought penalty
+                if(weather === "drought") growRate *= 0.5;
+
+                plot.growthDay += growRate;
+                plot.quality = Math.min(1.5, plot.quality + (wasWatered ? 0.05 : -0.1));
+                plot.stage = Math.min(cropInfo.stages, Math.floor(plot.growthDay / (cropInfo.growTime / cropInfo.stages)));
+                if(plot.growthDay >= cropInfo.growTime) { plot.ready = true; }
+            } else {
+                plot.quality = Math.max(0.5, plot.quality - 0.1);
+            }
+        }
+        plot.watered = false;
+    }
+
+    // Equipment: auto-till
+    if(farm.equipment.tractor) {
+        var tilled = 0;
+        for(var t = 0; t < farm.plots.length && tilled < 4; t++) {
+            if(!farm.plots[t].tilled && !farm.plots[t].planted) {
+                farm.plots[t].tilled = true; tilled++;
+            }
+        }
+        if(tilled > 0) toast("Tractor tilled " + tilled + " plots", "info");
+    }
+
+    // Equipment: auto-harvest
+    if(farm.equipment.harvester) {
+        var harvestTotal = 0;
+        for(var h = 0; h < farm.plots.length; h++) {
+            if(farm.plots[h].ready) {
+                var ci = crops[farm.plots[h].planted];
+                var mult = seasonMults[farm.season][farm.plots[h].planted] || 1.0;
+                var price = Math.round(ci.sellPrice * mult * farm.plots[h].quality);
+                harvestTotal += price;
+                farm.totalHarvested++;
+                farm.plots[h].planted = null;
+                farm.plots[h].tilled = false;
+                farm.plots[h].ready = false;
+                farm.plots[h].quality = 1.0;
+            }
+        }
+        if(harvestTotal > 0) {
+            farm.money += harvestTotal; farm.totalEarned += harvestTotal;
+            toast("Harvester collected $" + harvestTotal, "success");
+        }
+    }
+
+    // Animal produce & feeding
+    for(var a = 0; a < farm.animals.length; a++) {
+        var animal = farm.animals[a];
+        var info = animalDefs[animal.type];
+
+        // Feed
+        if(farm.barn.feed >= info.feedRate) {
+            farm.barn.feed -= info.feedRate;
+            animal.fed = true;
+        } else if(farm.barn.hay >= info.feedRate) {
+            farm.barn.hay -= info.feedRate;
+            animal.fed = true;
+        } else {
+            animal.fed = false;
+            animal.health = Math.max(0, animal.health - 5);
+        }
+
+        // Produce
+        if(animal.fed && animal.health > 0) {
+            animal.daysSinceProduce++;
+            if(animal.daysSinceProduce >= info.produceCycle) {
+                farm.barn[info.produce] += info.produceAmt;
+                animal.daysSinceProduce = 0;
+            }
+            animal.health = Math.min(100, animal.health + 1);
+        }
+    }
+
+    sfxNewDay();
+    toast("Day " + farm.day + " — " + farm.season.charAt(0).toUpperCase() + farm.season.slice(1) + " (Day " + farm.seasonDay + ") — " + weather, "info", 4000);
+}
+
+// ── Tool Use ────────────────────────────────────────────────
+function useTool(plotIdx) {
+    if(plotIdx < 0 || plotIdx >= farm.plots.length) return;
+    if(farm.energy <= 0) { toast("No energy! Sleep (N) to recover.", "error"); sfxError(); return; }
+
+    var plot = farm.plots[plotIdx];
+    var tool = farm.tools[farm.selectedTool];
+
+    switch(tool) {
+        case "Hoe":
+            if(!plot.tilled && !plot.planted) {
+                plot.tilled = true; farm.energy -= 3; sfxDig();
+                var px = plotStartX + plot.c * plotSize + plotSize/2;
+                var py = plotStartY + plot.r * plotSize + plotSize/2;
+                spawnParticles(px, py, "#8c5a33", 4);
+            }
+            break;
+        case "Seeds":
+            if(plot.tilled && !plot.planted) {
+                var ct = farm.selectedSeed;
+                if(farm.money >= crops[ct].seedCost) {
+                    plot.planted = ct; plot.growthDay = 0; plot.stage = 0;
+                    plot.ready = false; plot.quality = 1.0;
+                    farm.money -= crops[ct].seedCost; farm.energy -= 2;
+                    sfxPlant();
+                    var px2 = plotStartX + plot.c * plotSize + plotSize/2;
+                    var py2 = plotStartY + plot.r * plotSize + plotSize/2;
+                    spawnParticles(px2, py2, crops[ct].color, 5);
+                } else { sfxError(); toast("Not enough money for " + ct + " seeds!", "error"); }
+            }
+            break;
+        case "Water":
+            if(plot.planted && !plot.watered) {
+                plot.watered = true; farm.energy -= 2; sfxWater();
+                var px3 = plotStartX + plot.c * plotSize + plotSize/2;
+                var py3 = plotStartY + plot.r * plotSize + plotSize/2;
+                spawnParticles(px3, py3, "#4488ff", 6);
+            }
+            break;
+        case "Harvest":
+            if(plot.ready) {
+                var cropInfo = crops[plot.planted];
+                var mult = seasonMults[farm.season][plot.planted] || 1.0;
+                var sellPrice = Math.round(cropInfo.sellPrice * mult * plot.quality);
+                farm.money += sellPrice; farm.totalEarned += sellPrice;
+                farm.totalHarvested++; farm.energy -= 2;
+                var px4 = plotStartX + plot.c * plotSize + plotSize/2;
+                var py4 = plotStartY + plot.r * plotSize + plotSize/2;
+                spawnParticles(px4, py4, "#ffaa33", 8);
+                plot.planted = null; plot.tilled = false; plot.ready = false; plot.quality = 1.0;
+                sfxHarvest();
+                toast("+$" + sellPrice + (mult > 1.1 ? " (season bonus!)" : ""), "success");
+            }
+            break;
+        case "Axe":
+            // Clear a dead/winter-killed crop
+            if(plot.planted && farm.season === "winter" && !plot.ready) {
+                plot.planted = null; plot.tilled = false; farm.energy -= 2; sfxDig();
+                toast("Cleared dead crop", "info");
+            }
+            break;
+        case "Feed":
+            // Feed nearest unfed animal
+            var fedOne = false;
+            for(var i = 0; i < farm.animals.length; i++) {
+                if(!farm.animals[i].fed) {
+                    var ad = animalDefs[farm.animals[i].type];
+                    if(farm.barn.feed >= ad.feedRate) {
+                        farm.barn.feed -= ad.feedRate;
+                        farm.animals[i].fed = true; fedOne = true;
+                        sfxAnimal();
+                        toast("Fed " + farm.animals[i].name, "success");
+                        farm.energy -= 1;
+                        break;
+                    }
+                }
+            }
+            if(!fedOne) toast("No hungry animals or no feed!", "info");
+            break;
+    }
+}
+
+// ── Click → Plot ────────────────────────────────────────────
+function getPlotAtMouse() {
+    var mx = mouse.x - plotStartX;
+    var my = mouse.y - plotStartY;
+    if(mx < 0 || my < 0) return -1;
+    var c = Math.floor(mx / plotSize);
+    var r = Math.floor(my / plotSize);
+    if(c < 0 || c >= GRID || r < 0 || r >= GRID) return -1;
+    return r * GRID + c;
+}
+
+// ── Save / Load ─────────────────────────────────────────────
+function saveGame() {
+    try {
+        localStorage.setItem("ff2_save", JSON.stringify({
+            money: farm.money, day: farm.day, season: farm.season, seasonDay: farm.seasonDay,
+            energy: farm.energy, maxEnergy: farm.maxEnergy, plots: farm.plots,
+            animals: farm.animals, barn: farm.barn, equipment: farm.equipment,
+            selectedSeed: farm.selectedSeed, totalHarvested: farm.totalHarvested,
+            totalEarned: farm.totalEarned, daysPlayed: farm.daysPlayed,
+            weather: weather, weatherDays: weatherDays
+        }));
+    } catch(e) {}
+}
+function loadGame() {
+    try {
+        var d = JSON.parse(localStorage.getItem("ff2_save"));
+        if(d) {
+            farm.money = d.money; farm.day = d.day; farm.season = d.season;
+            farm.seasonDay = d.seasonDay || 1; farm.energy = d.energy;
+            farm.maxEnergy = d.maxEnergy; farm.plots = d.plots;
+            farm.animals = d.animals; farm.barn = d.barn; farm.equipment = d.equipment;
+            farm.selectedSeed = d.selectedSeed || "wheat";
+            farm.totalHarvested = d.totalHarvested || 0;
+            farm.totalEarned = d.totalEarned || 0;
+            farm.daysPlayed = d.daysPlayed || 0;
+            weather = d.weather || "clear"; weatherDays = d.weatherDays || 0;
+            toast("Game loaded! Day " + farm.day, "success");
+            sfxClick();
+        } else { toast("No save found", "warning"); }
+    } catch(e) { toast("Load failed", "error"); }
+}
+
+// ── Sky Colors by Time/Season ───────────────────────────────
+function getSkyColor() {
+    var t = farm.timeOfDay;
+    var r, g, b;
+    if(t < 6)       { r=5;  g=5;  b=20; }      // night
+    else if(t < 8)  { r=40; g=30; b=60; }       // dawn
+    else if(t < 18) { r=60; g=80; b=120; }      // day
+    else if(t < 20) { r=80; g=40; b=40; }       // dusk
+    else            { r=5;  g=5;  b=20; }        // night
+
+    // Season tint
+    if(farm.season === "summer") { r += 10; g += 5; }
+    if(farm.season === "fall") { r += 15; g -= 5; }
+    if(farm.season === "winter") { r -= 10; g -= 5; b += 15; }
+
+    // Weather
+    if(weather === "rain" || weather === "storm") { r -= 15; g -= 10; b -= 5; }
+
+    return "rgb(" + Math.max(0,Math.min(255,r)) + "," + Math.max(0,Math.min(255,g)) + "," + Math.max(0,Math.min(255,b)) + ")";
+}
+
+// ── Render ──────────────────────────────────────────────────
+function render() {
+    ctx.fillStyle = getSkyColor();
+    ctx.fillRect(0, 0, W, H);
+
+    if(state === STATE.PLAYING || state === STATE.PAUSED) {
+        drawFarm();
+        drawHUD();
+        drawParticles();
+
+        // Rain effect
+        if(weather === "rain" || weather === "storm") {
+            ctx.strokeStyle = "rgba(100,150,255,0.2)";
+            ctx.lineWidth = 1;
+            for(var i = 0; i < (weather === "storm" ? 80 : 30); i++) {
+                var rx = Math.random() * W;
+                var ry = Math.random() * H;
+                ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - 2, ry + 10); ctx.stroke();
+            }
+        }
+    }
+}
+
+function drawFarm() {
+    // Layout: center the 8x8 grid
+    var maxGridSize = Math.min(W * 0.65, H * 0.75);
+    plotSize = Math.floor(maxGridSize / GRID);
+    plotStartX = Math.floor((W - plotSize * GRID) / 2);
+    plotStartY = Math.floor((H - plotSize * GRID) / 2) + 20;
+
+    // Ground
+    ctx.fillStyle = "rgba(30,50,20,0.3)";
+    ctx.fillRect(plotStartX - 10, plotStartY - 10, plotSize * GRID + 20, plotSize * GRID + 20);
+
+    // Plots
+    for(var i = 0; i < farm.plots.length; i++) {
+        var p = farm.plots[i];
+        var x = plotStartX + p.c * plotSize;
+        var y = plotStartY + p.r * plotSize;
+        var pad = 2;
+
+        // Base color
+        if(p.planted) {
+            var ci = crops[p.planted];
+            var progress = p.stage / ci.stages;
+            // Brown → crop color gradient
+            var br = 60 + progress * 30;
+            var bg = 40 + progress * 60;
+            var bb = 20;
+            ctx.fillStyle = "rgb(" + Math.round(br) + "," + Math.round(bg) + "," + Math.round(bb) + ")";
+        } else if(p.tilled) {
+            ctx.fillStyle = "#4a3520";
+        } else {
+            ctx.fillStyle = "#2a4015";
+        }
+        ctx.fillRect(x + pad, y + pad, plotSize - pad*2, plotSize - pad*2);
+
+        // Watered overlay
+        if(p.watered) {
+            ctx.fillStyle = "rgba(50,100,200,0.2)";
+            ctx.fillRect(x + pad, y + pad, plotSize - pad*2, plotSize - pad*2);
+        }
+
+        // Crop visual
+        if(p.planted) {
+            var ci2 = crops[p.planted];
+            var growPct = Math.min(1, p.stage / ci2.stages);
+            var cropH = (plotSize * 0.15) + growPct * (plotSize * 0.5);
+            var cx = x + plotSize / 2;
+            var cy = y + plotSize - pad - 4;
+
+            ctx.fillStyle = ci2.color;
+            if(p.ready) {
+                // Full crop with glow
+                ctx.shadowColor = ci2.color;
+                ctx.shadowBlur = 8;
+            }
+            // Draw crop "plant" shapes
+            var stemW = Math.max(2, plotSize * 0.06);
+            ctx.fillRect(cx - stemW/2, cy - cropH, stemW, cropH);
+            // Leaves/fruit
+            if(growPct > 0.3) {
+                ctx.beginPath();
+                ctx.arc(cx, cy - cropH, plotSize * 0.12 * growPct, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            if(growPct > 0.6) {
+                ctx.beginPath();
+                ctx.arc(cx - plotSize * 0.1, cy - cropH * 0.5, plotSize * 0.08, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.shadowBlur = 0;
+
+            // Quality indicator
+            if(p.quality > 1.2) {
+                ctx.fillStyle = "#ffd700";
+                ctx.font = Math.max(8, plotSize * 0.18) + "px monospace";
+                ctx.textAlign = "right";
+                ctx.fillText("★", x + plotSize - pad - 2, y + pad + Math.max(10, plotSize * 0.2));
+            }
+        }
+
+        // Hover highlight
+        var hoverIdx = getPlotAtMouse();
+        if(i === hoverIdx && state === STATE.PLAYING) {
+            ctx.strokeStyle = "#ffaa33";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x + pad, y + pad, plotSize - pad*2, plotSize - pad*2);
+        }
+    }
+}
+
+function drawHUD() {
+    var barH = 55;
+
+    // Bottom bar background
+    ctx.fillStyle = "rgba(10,15,25,0.92)";
+    ctx.fillRect(0, H - barH, W, barH);
+    ctx.strokeStyle = "rgba(255,170,51,0.3)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, H - barH); ctx.lineTo(W, H - barH); ctx.stroke();
+
+    // Energy bar
+    var ebX = 15, ebY = H - barH + 10, ebW = 140, ebH = 14;
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    ctx.fillRect(ebX, ebY, ebW, ebH);
+    var ePct = farm.energy / farm.maxEnergy;
+    ctx.fillStyle = ePct > 0.3 ? "#33ff88" : "#ff3366";
+    ctx.fillRect(ebX, ebY, ebW * ePct, ebH);
+    ctx.fillStyle = "#e0e8f0";
+    ctx.font = "11px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("E: " + Math.round(farm.energy) + "/" + farm.maxEnergy, ebX, ebY + ebH + 14);
+
+    // Money
+    ctx.fillStyle = "#ffaa33";
+    ctx.font = "bold 18px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText("$" + farm.money, W - 15, H - barH + 24);
+
+    // Day/Season/Weather
+    ctx.fillStyle = "#8090a0";
+    ctx.font = "12px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText("Day " + farm.day + " | " + farm.season.charAt(0).toUpperCase() + farm.season.slice(1) + " " + farm.seasonDay + "/28 | " + weather, W - 15, H - barH + 42);
+
+    // Time of day
+    var hr = Math.floor(farm.timeOfDay);
+    var mn = Math.floor((farm.timeOfDay % 1) * 60);
+    ctx.textAlign = "left";
+    ctx.fillText((hr < 10 ? "0" : "") + hr + ":" + (mn < 10 ? "0" : "") + mn, 170, H - barH + 24);
+
+    // Tool bar (centered)
+    var toolW = 52, toolH = 30;
+    var toolBarW = farm.tools.length * (toolW + 4);
+    var toolBarX = (W - toolBarW) / 2;
+    var toolBarY = H - barH + 8;
+
+    for(var t = 0; t < farm.tools.length; t++) {
+        var tx = toolBarX + t * (toolW + 4);
+        var sel = t === farm.selectedTool;
+        ctx.fillStyle = sel ? "rgba(255,170,51,0.25)" : "rgba(255,255,255,0.05)";
+        ctx.fillRect(tx, toolBarY, toolW, toolH);
+        if(sel) {
+            ctx.strokeStyle = "#ffaa33";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(tx, toolBarY, toolW, toolH);
+        }
+        ctx.fillStyle = sel ? "#ffaa33" : "#8090a0";
+        ctx.font = (sel ? "bold " : "") + "11px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(farm.tools[t], tx + toolW/2, toolBarY + 14);
+        ctx.fillStyle = "rgba(255,255,255,0.3)";
+        ctx.font = "9px monospace";
+        ctx.fillText("[" + (t+1) + "]", tx + toolW/2, toolBarY + 26);
+    }
+
+    // Seed indicator (when Seeds tool selected)
+    if(farm.selectedTool === 1) {
+        seedBarEl.style.display = "block";
+        ctx.fillStyle = "#ffaa33";
+        ctx.font = "12px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("Seed: " + farm.selectedSeed.toUpperCase() + " ($" + crops[farm.selectedSeed].seedCost + ") [Q/R to cycle]", W/2, H - barH - 5);
+    } else {
+        seedBarEl.style.display = "none";
+    }
+
+    // Top bar - barn summary
+    ctx.fillStyle = "rgba(10,15,25,0.85)";
+    ctx.fillRect(0, 0, W, 40);
+    ctx.strokeStyle = "rgba(255,170,51,0.2)";
+    ctx.beginPath(); ctx.moveTo(0, 40); ctx.lineTo(W, 40); ctx.stroke();
+
+    ctx.font = "12px monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#8090a0";
+    var barnStr = "Barn: M:" + farm.barn.milk + " E:" + farm.barn.eggs + " W:" + farm.barn.wool + " | Hay:" + farm.barn.hay + " Feed:" + farm.barn.feed;
+    ctx.fillText(barnStr, 15, 16);
+
+    var animalStr = "Animals: " + farm.animals.length + " | Harvested: " + farm.totalHarvested + " | Earned: $" + farm.totalEarned;
+    ctx.fillText(animalStr, 15, 32);
+
+    // Equipment icons
+    ctx.textAlign = "right";
+    var eqStr = "";
+    if(farm.equipment.tractor) eqStr += "[T] ";
+    if(farm.equipment.sprinkler) eqStr += "[W] ";
+    if(farm.equipment.harvester) eqStr += "[H] ";
+    if(eqStr) {
+        ctx.fillStyle = "#33ff88";
+        ctx.fillText(eqStr, W - 15, 16);
+    }
+
+    // Controls reminder
+    ctx.fillStyle = "rgba(255,255,255,0.2)";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText("E:Shop  B:Barn  N:Sleep  P:Pause", W - 15, 32);
+}
+
+// ── Game Loop ───────────────────────────────────────────────
+var lastTime = 0;
+function gameLoop(timestamp) {
+    var dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+    lastTime = timestamp;
+
+    // Update
+    if(state === STATE.PLAYING) {
+        farm.timeOfDay += dt * 0.5; // ~2 real seconds per game-minute
+        if(farm.timeOfDay >= 22) {
+            toast("Getting late... press N to sleep", "warning");
+            farm.timeOfDay = 22; // cap at 10pm
+        }
+        updateParticles(dt);
+
+        // Click to use tool
+        if(mouse.clicked) {
+            var idx = getPlotAtMouse();
+            if(idx >= 0) useTool(idx);
+            mouse.clicked = false;
+        }
+    }
+
+    render();
+    requestAnimationFrame(gameLoop);
+}
+
+// ── Boot ────────────────────────────────────────────────────
+function setLoad(pct, msg) {
+    document.getElementById("loadBar").style.width = pct + "%";
+    document.getElementById("loadMsg").textContent = msg;
+}
+
+setLoad(30, "Growing sounds...");
+setTimeout(function() {
+    setLoad(60, "Planting fields...");
+    setTimeout(function() {
+        setLoad(90, "Building farmhouse...");
+        setTimeout(function() {
+            setLoad(100, "Ready.");
+            setTimeout(function() {
+                document.getElementById("loading").style.display = "none";
+                state = STATE.MENU;
+                showOverlay("menu");
+                // Check for existing save
+                if(localStorage.getItem("ff2_save")) {
+                    document.getElementById("btnLoad").style.display = "block";
+                } else {
+                    document.getElementById("btnLoad").style.display = "none";
+                }
+                requestAnimationFrame(gameLoop);
+            }, 300);
+        }, 200);
+    }, 200);
+}, 200);
+
+})();
+</script>
+</body>
+</html>
