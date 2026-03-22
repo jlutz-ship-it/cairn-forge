@@ -176,6 +176,7 @@ rotateY:function(o,a,r){var s=Math.sin(r),c=Math.cos(r),a0=a[0],a1=a[1],a2=a[2],
 };
 var glC=document.getElementById("gl"),hudC=document.getElementById("hud");
 var gl=glC.getContext("webgl",{antialias:true,alpha:false}),hud=hudC.getContext("2d");
+if(!gl){document.body.innerHTML='<div style="color:#ff4444;text-align:center;margin-top:40vh;font-size:24px;font-family:monospace">WebGL required — update your browser or enable hardware acceleration</div>';throw 0;}
 var W,H;
 function resize(){W=glC.width=hudC.width=innerWidth;H=glC.height=hudC.height=innerHeight;gl.viewport(0,0,W,H);}
 addEventListener("resize",resize);resize();
