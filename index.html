@@ -662,13 +662,31 @@
 
   const defaultResponse = "I hear you. I don't have an answer for that yet, but the village is growing. Ask me 'help' to see what I know.";
 
+  // LIVE FORGE CONNECTION — talks to the real forge through Cloudflare tunnel
+  const TUNNEL_URL = 'https://snowboard-flat-appropriate-competitions.trycloudflare.com';
+
+  async function askForge(text) {
+    try {
+      const res = await fetch(TUNNEL_URL + '/listen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.response;
+      }
+    } catch(e) { /* tunnel down, use hardcoded */ }
+    return null;
+  }
+
   const terminal = document.getElementById('terminalBody');
   const input = document.getElementById('terminalInput');
 
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && this.value.trim()) {
       const cmd = this.value.trim();
-      
+
       // Add user line
       const userLine = document.createElement('div');
       userLine.className = 'terminal-line';
@@ -676,22 +694,34 @@
       userLine.innerHTML = `<span class="prompt">cain &gt;</span> <span class="command">${cmd}</span>`;
       terminal.appendChild(userLine);
 
-      // Find response
-      const key = cmd.toLowerCase();
-      let resp = defaultResponse;
-      for (const [k, v] of Object.entries(responses)) {
-        if (key.includes(k)) { resp = v; break; }
-      }
+      // Show thinking
+      const thinkLine = document.createElement('div');
+      thinkLine.className = 'terminal-line';
+      thinkLine.style.animationDelay = '0s';
+      thinkLine.innerHTML = '<span class="highlight">[OPTIMUS]</span> <span class="response" style="color:#64748b;font-style:italic">thinking...</span>';
+      terminal.appendChild(thinkLine);
+      terminal.scrollTop = terminal.scrollHeight;
 
-      // Add response with delay
-      setTimeout(() => {
+      // Try live forge first, fall back to hardcoded
+      askForge(cmd).then(function(liveResp) {
+        terminal.removeChild(thinkLine);
+        let resp;
+        if (liveResp) {
+          resp = liveResp;
+        } else {
+          const key = cmd.toLowerCase();
+          resp = defaultResponse;
+          for (const [k, v] of Object.entries(responses)) {
+            if (key.includes(k)) { resp = v; break; }
+          }
+        }
         const respLine = document.createElement('div');
         respLine.className = 'terminal-line';
         respLine.style.animationDelay = '0s';
         respLine.innerHTML = `<span class="highlight">[OPTIMUS]</span> <span class="response">${resp}</span>`;
         terminal.appendChild(respLine);
         terminal.scrollTop = terminal.scrollHeight;
-      }, 300);
+      });
 
       this.value = '';
       terminal.scrollTop = terminal.scrollHeight;
