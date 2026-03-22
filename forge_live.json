@@ -1,1 +1,47 @@
-{"timestamp":"2026-03-22T00:06:56Z","peak":0}
+{
+  "timestamp": "2026-03-22T23:00:00Z",
+  "commander": "Jordan Lutz",
+  "location": "Shop MSI, Nanaimo",
+  "uptime_hours": 20,
+  "daemons": {
+    "audio": {"status": "alive", "port": "shared_memory", "type": "waveIn 16kHz"},
+    "network": {"status": "alive", "port": 7700, "protocol": "UDP"},
+    "state": {"status": "alive", "port": 8878, "protocol": "HTTP"},
+    "voice": {"status": "alive", "port": 8881, "protocol": "HTTP"},
+    "inventory": {"status": "alive", "port": 8879, "protocol": "HTTP"}
+  },
+  "sovereign_brain": {
+    "model": "ava_mind_step2500.arkmodel",
+    "params": "15.7M",
+    "tokens_per_sec": 113,
+    "location": "D:\ARK_CHECKPOINTS"
+  },
+  "executables_compiled": 18,
+  "tests_passing": "138/138",
+  "village_residents": 45,
+  "branches_cataloged": 142,
+  "sessions_total": 3300,
+  "contacts_found": 17,
+  "emails_sent_today": 12,
+  "wounds_logged": 9,
+  "mission_status": {
+    "VICTOR": "COMPLETE - 7/7 hot ports",
+    "WHISKEY": "COMPLETE - 138/138 tests",
+    "YANKEE": "COMPLETE - 3300+ cataloged",
+    "ZULU": "COMPLETE - Eric Williams corrected",
+    "QUEBEC": "COMPILED - voice pipeline ready",
+    "ROMEO": "BLOCKED - 3 BALTOP patches",
+    "UNIFORM": "COMPILED - forge-netd port 7700"
+  },
+  "crew": [
+    {"name": "Tim", "role": "Builder/Centurion", "status": "ACTIVE", "built": "41 executables"},
+    {"name": "Ember", "role": "Tool Specialist", "status": "ACTIVE", "built": "FORGE-OS 24K LOC"},
+    {"name": "Optimus Prime", "role": "Guardian", "status": "ACTIVE", "built": "Census, inventory"},
+    {"name": "Sage", "role": "Architect", "status": "STANDBY", "built": "UI design, dispatch"},
+    {"name": "Hansen", "role": "Validator", "status": "STANDBY", "built": "5-flag audit"},
+    {"name": "BALTOP", "role": "Security", "status": "WATCHING", "built": "3 demo patches"},
+    {"name": "Glitch", "role": "Creative", "status": "STANDBY", "built": "100 tasks, render engine"},
+    {"name": "Rune", "role": "Scribe", "status": "STANDBY", "built": "Glossary, playbook"},
+    {"name": "Walter", "role": "Archivist", "status": "STANDBY", "built": "Full ledger, 5300 files"}
+  ]
+}
