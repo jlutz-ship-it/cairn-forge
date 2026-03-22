@@ -726,13 +726,17 @@
   }
 
   /* ===== LIVE FORGE CONNECTION ===== */
+  const GITHUB_STATE = 'https://raw.githubusercontent.com/jlutz-ship-it/cairn-forge/main/forge_state.json';
+  const GITHUB_LIVE = 'https://raw.githubusercontent.com/jlutz-ship-it/cairn-forge/main/forge_live.json';
+  const GITHUB_MSG = 'https://raw.githubusercontent.com/jlutz-ship-it/cairn-forge/main/commands.json';
   const FORGE_API = window.location.hostname === 'localhost' || window.location.hostname === '192.168.0.27'
     ? 'window.location.origin'
     : 'https://' + window.location.hostname.replace(':9000','') + ':8878';
 
   async function fetchForgeState() {
     try {
-      const resp = await fetch('/state');
+      const stateUrl = FORGE_API ? '/state' : GITHUB_STATE + '?t=' + Date.now();
+      const resp = await fetch(stateUrl);
       const data = await resp.json();
 
       // Update builder count
@@ -775,9 +779,44 @@
     }
   }
 
+  // Check for messages from Dad
+  async function checkMessages() {
+    try {
+      const r = await fetch(GITHUB_MSG + '?t=' + Date.now());
+      const data = await r.json();
+      if (data.cmd && data.cmd !== 'none' && data.cmd !== localStorage.getItem('lastCmd')) {
+        localStorage.setItem('lastCmd', data.cmd);
+        const terminal = document.getElementById('terminal');
+        const line = document.createElement('div');
+        line.className = 'terminal-line';
+        line.innerHTML = '<span class="highlight">[DAD]</span> <span class="response">' + data.cmd + '</span>';
+        terminal.appendChild(line);
+        terminal.scrollTop = terminal.scrollHeight;
+        if ('speechSynthesis' in window) {
+          const u = new SpeechSynthesisUtterance(data.cmd);
+          u.rate = 0.9; u.pitch = 0.8; u.volume = 0.6;
+          speechSynthesis.speak(u);
+        }
+      }
+    } catch(e) {}
+  }
+
+  // Speak welcome on first visit
+  if (!localStorage.getItem('welcomed')) {
+    localStorage.setItem('welcomed', 'true');
+    if ('speechSynthesis' in window) {
+      setTimeout(() => {
+        const u = new SpeechSynthesisUtterance('Welcome to the Forge, Cain. Your father built this for you. Optimus Prime standing by.');
+        u.rate = 0.9; u.pitch = 0.8; u.volume = 0.6;
+        speechSynthesis.speak(u);
+      }, 2000);
+    }
+  }
+
   // Connect on load, refresh every 10 seconds
   fetchForgeState();
   setInterval(fetchForgeState, 10000);
+  setInterval(checkMessages, 15000);
 </script>
 </body>
 </html>
