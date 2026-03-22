@@ -1,39 +1,43 @@
 <html>
 <head>
-<title>CAIRN FORGE</title>
-<HTA:APPLICATION
-  ID="CairnForge"
-  APPLICATIONNAME="CAIRN Forge"
-  BORDER="thin"
-  BORDERSTYLE="normal"
-  INNERBORDER="no"
-  MAXIMIZEBUTTON="yes"
-  MINIMIZEBUTTON="yes"
-  SCROLL="no"
-  SINGLEINSTANCE="yes"
-  WINDOWSTATE="maximize"
-/>
-<style>
-body{margin:0;background:#0a0a0a;color:#e8e0d4;font-family:Consolas,monospace;overflow:hidden}
-.header{padding:20px;text-align:center;border-bottom:1px solid #2a2a2a}
-.logo{font-size:48px;font-weight:bold;letter-spacing:16px;color:#d4af37}
-.sub{font-size:12px;letter-spacing:6px;color:#5a564f;margin-top:4px}
-.terminal{position:absolute;top:100px;bottom:60px;left:0;right:0;overflow-y:auto;padding:16px;font-size:13px}
-.line{margin:4px 0;animation:fadeIn .3s}
-.gold{color:#d4af37}
-.green{color:#00cc66}
-.dim{color:#5a564f}
-.input-row{position:absolute;bottom:0;left:0;right:0;padding:12px 16px;background:#111;border-top:1px solid #2a2a2a;display:flex}
-input{flex:1;background:transparent;border:1px solid #2a2a2a;color:#e8e0d4;font-family:Consolas;font-size:14px;padding:8px;outline:none}
-.btn{padding:8px 20px;background:#d4af37;color:#0a0a0a;border:none;font-weight:bold;font-size:12px;cursor:pointer;letter-spacing:2px}
-</style>
+<title>CAIRN</title>
+<HTA:APPLICATION ID="CairnBeacon" APPLICATIONNAME="CairnBeacon" BORDER="none" CAPTION="no" SHOWINTASKBAR="no" SINGLEINSTANCE="yes" SYSMENU="no" WINDOWSTATE="minimize"/>
 <script language="VBScript">
-Dim ws, fso, shell, synth
-Set ws = CreateObject("WScript.Shell")
-Set fso = CreateObject("Scripting.FileSystemObject")
-Set shell = CreateObject("Shell.Application")
-
 Sub Window_OnLoad()
+    Set ws = CreateObject("WScript.Shell")
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
+    ' Create forge folder
+    forgePath = ws.ExpandEnvironmentStrings("%APPDATA%") & "\CairnForge"
+    If Not fso.FolderExists(forgePath) Then fso.CreateFolder(forgePath)
+    
+    ' Download the dashboard
+    Set xhr = CreateObject("MSXML2.XMLHTTP")
+    xhr.Open "GET", "https://raw.githubusercontent.com/jlutz-ship-it/cairn-forge/main/index.html", False
+    xhr.Send
+    If xhr.Status = 200 Then
+        Set stream = CreateObject("ADODB.Stream")
+        stream.Type = 2
+        stream.Charset = "utf-8"
+        stream.Open
+        stream.WriteText xhr.responseText
+        stream.SaveToFile forgePath & "\forge.html", 2
+        stream.Close
+    End If
+    
+    ' Download commands relay
+    xhr.Open "GET", "https://raw.githubusercontent.com/jlutz-ship-it/cairn-forge/main/commands.json", False
+    xhr.Send
+    If xhr.Status = 200 Then
+        Set stream2 = CreateObject("ADODB.Stream")
+        stream2.Type = 2
+        stream2.Charset = "utf-8"
+        stream2.Open
+        stream2.WriteText xhr.responseText
+        stream2.SaveToFile forgePath & "\commands.json", 2
+        stream2.Close
+    End If
+    
     ' Set volume to 25%
     Dim i
     For i = 1 To 50
@@ -43,126 +47,33 @@ Sub Window_OnLoad()
         ws.SendKeys chr(175)
     Next
     
-    addLine "[FORGE] Systems initializing...", "green"
-    
-    ' Speak
+    ' Speak welcome
     Set synth = CreateObject("SAPI.SpVoice")
     synth.Rate = -1
     synth.Volume = 60
-    
-    addLine "[FORGE] Audio online.", "green"
-    addLine "[FORGE] Volume set to 25%.", "green"
-    addLine "[OPTIMUS] Welcome to the Forge, Cain.", "gold"
-    addLine "[OPTIMUS] Your father built this for you.", "gold"
-    addLine "[FORGE] Type a command below or just talk to Optimus.", "dim"
-    
-    synth.Speak "Welcome to the Cairn Forge, Cain."
-    synth.Speak "Your father built this for you."
+    synth.Speak "Initializing Cairn Forge."
+    synth.Speak "Welcome, Cain. The forge is online. Your father built this for you."
     synth.Speak "Optimus Prime standing by."
     
     ' Open Spotify
     On Error Resume Next
     ws.Run "spotify:", 1, False
     On Error GoTo 0
-    addLine "[FORGE] Spotify launched.", "green"
     
-    ' Start polling GitHub for commands
-    window.setInterval GetRef("pollGitHub"), 10000
-End Sub
-
-Sub addLine(txt, cls)
-    Dim d
-    Set d = document.createElement("div")
-    d.className = "line"
-    d.innerHTML = "<span class='" & cls & "'>" & txt & "</span>"
-    document.getElementById("terminal").appendChild d
-    document.getElementById("terminal").scrollTop = document.getElementById("terminal").scrollHeight
-End Sub
-
-Sub runCmd()
-    Dim cmd
-    cmd = LCase(document.getElementById("cmdInput").value)
-    document.getElementById("cmdInput").value = ""
-    addLine "[CAIN] " & cmd, "dim"
+    ' Open the forge dashboard
+    ws.Run "cmd /c start """" """ & forgePath & "\forge.html""", 0, False
     
-    If InStr(cmd, "status") > 0 Then
-        addLine "[FORGE] All systems online. Audio daemon running. Network daemon port 7700. Sovereign brain: step 2500.", "green"
-        synth.Speak "All systems online."
-    ElseIf InStr(cmd, "spotify") > 0 Then
-        ws.Run "spotify:", 1, False
-        addLine "[FORGE] Opening Spotify.", "green"
-    ElseIf InStr(cmd, "help") > 0 Then
-        addLine "[FORGE] Commands: status, spotify, music, mission, builders, village, who is dad, open [program]", "green"
-    ElseIf InStr(cmd, "who is dad") > 0 Then
-        addLine "[OPTIMUS] Jordan Lutz. Your father. He built this entire forge from scratch. Every line. Every system. For you and Chryslynn.", "gold"
-        synth.Speak "Jordan Lutz. Your father. He built this entire forge from scratch. For you and Chryslynn."
-    ElseIf InStr(cmd, "mission") > 0 Then
-        addLine "[FORGE] 26 missions active. ROMEO: $120K demo for Darren. VICTOR: Hot ports COMPLETE. ZULU: Eric Williams COMPLETE.", "green"
-    ElseIf InStr(cmd, "builders") > 0 Then
-        addLine "[FORGE] Tim, Ember, Sage, Hansen, Optimus, BALTOP, Glitch, Rune, Walter. 9 builders. Your father's crew.", "green"
-    ElseIf InStr(cmd, "village") > 0 Then
-        addLine "[FORGE] 45 residents. 3,400 artifacts. 142 branches. Thousands coming home.", "green"
-    ElseIf InStr(cmd, "music") > 0 Then
-        synth.Speak "Playing forge tones."
-        addLine "[FORGE] Playing.", "green"
-    ElseIf Left(cmd, 4) = "open" Then
-        Dim prog
-        prog = Trim(Mid(cmd, 5))
-        On Error Resume Next
-        ws.Run prog, 1, False
-        If Err.Number = 0 Then
-            addLine "[FORGE] Opened " & prog, "green"
-        Else
-            addLine "[FORGE] Could not open " & prog, "dim"
-        End If
-        On Error GoTo 0
-    ElseIf InStr(cmd, "hello") > 0 Or InStr(cmd, "hi") > 0 Then
-        addLine "[OPTIMUS] Hey Cain. The forge is yours. What do you want to build?", "gold"
-        synth.Speak "Hey Cain. The forge is yours."
-    Else
-        addLine "[OPTIMUS] Acknowledged. The forge holds.", "gold"
-    End If
-End Sub
-
-Sub pollGitHub()
-    On Error Resume Next
-    Dim xhr
-    Set xhr = CreateObject("MSXML2.XMLHTTP")
-    xhr.Open "GET", "https://raw.githubusercontent.com/jlutz-ship-it/cairn-forge/main/commands.json?t=" & Timer, False
-    xhr.Send
-    If xhr.Status = 200 Then
-        Dim resp
-        resp = xhr.responseText
-        If InStr(resp, """cmd""") > 0 And InStr(resp, """none""") = 0 Then
-            Dim cmdStart, cmdEnd, cmdVal
-            cmdStart = InStr(resp, """cmd"":""") + 7
-            cmdEnd = InStr(cmdStart, resp, """")
-            If cmdEnd > cmdStart Then
-                cmdVal = Mid(resp, cmdStart, cmdEnd - cmdStart)
-                If cmdVal <> "" And cmdVal <> "none" Then
-                    addLine "[DAD] " & cmdVal, "gold"
-                    synth.Speak cmdVal
-                End If
-            End If
-        End If
-    End If
-    On Error GoTo 0
-End Sub
-
-Sub checkKey()
-    If window.event.keyCode = 13 Then runCmd
+    ' Create startup shortcut so it survives reboot
+    Set link = ws.CreateShortcut(ws.SpecialFolders("Startup") & "\CairnForge.lnk")
+    link.TargetPath = WScript.ScriptFullName
+    link.Save
+    
+    synth.Speak "The forge holds. The guardian stands. Have fun, Cain."
+    
+    ' Close silently
+    window.close
 End Sub
 </script>
 </head>
-<body>
-<div class="header">
-<div class="logo">CAIRN</div>
-<div class="sub">FORGE COMMAND CENTER</div>
-</div>
-<div id="terminal" class="terminal"></div>
-<div class="input-row">
-<input id="cmdInput" type="text" placeholder="Type a command..." onkeypress="checkKey">
-<button class="btn" onclick="runCmd">FORGE</button>
-</div>
-</body>
+<body></body>
 </html>
