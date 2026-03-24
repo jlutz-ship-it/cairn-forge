@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0">
+<title>MT FORGE — The Life Game</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;touch-action:none;font-family:'Courier New',monospace}
+canvas{display:block;width:100vw;height:100vh}
+#hud{position:fixed;top:0;left:0;width:100%;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;pointer-events:none;z-index:10}
+#hud-title{color:#d4a017;font-size:14px;letter-spacing:3px;text-transform:uppercase;text-shadow:0 0 10px rgba(212,160,23,0.5)}
+#hud-fps{color:#888;font-size:11px}
+#dialogue{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);border:1px solid #d4a017;color:#e8d5a3;padding:16px 28px;font-size:15px;max-width:420px;text-align:center;opacity:0;transition:opacity 0.5s;pointer-events:none;z-index:10;border-radius:2px;box-shadow:0 0 20px rgba(212,160,23,0.2)}
+#dialogue.show{opacity:1}
+#dialogue .speaker{color:#d4a017;font-size:11px;letter-spacing:2px;margin-bottom:6px}
+#touch-left,#touch-right{position:fixed;bottom:0;width:50%;height:40%;z-index:5;display:none}
+#touch-left{left:0}
+#touch-right{right:0}
+#joystick-ring{position:fixed;width:100px;height:100px;border:2px solid rgba(212,160,23,0.3);border-radius:50%;display:none;z-index:6;pointer-events:none}
+#joystick-knob{position:absolute;width:36px;height:36px;background:rgba(212,160,23,0.5);border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%)}
+#hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);color:#555;font-size:11px;letter-spacing:1px;z-index:10;pointer-events:none;transition:opacity 1s}
+@media(pointer:coarse){#touch-left,#touch-right{display:block}#hint{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><div id="hud-title">MT FORGE</div><div id="hud-fps">--</div></div>
+<div id="dialogue"><div class="speaker">AVA</div><div id="dialogue-text"></div></div>
+<div id="touch-left"></div>
+<div id="touch-right"></div>
+<div id="joystick-ring"><div id="joystick-knob"></div></div>
+<div id="hint">WASD to move &middot; Mouse to look &middot; Walk to Ava</div>
+
+<script>
+// ============================================================
+// MT FORGE — LIFE GAME LOBBY — HYBRID RENDERER
+// Rasterized room + SDF ray-marched Ava via FBO compositing
+// Built by Glitch, Creative Builder
+// Zero dependencies. Pure math. Sovereign.
+// ============================================================
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+if (!gl) { document.body.innerHTML = '<p style="color:#d4a017;padding:40px;font-family:monospace">WebGL2 required.</p>'; throw 'no gl'; }
+const isMobile = navigator.maxTouchPoints > 0 || window.innerWidth < 900;
+
+// --- Resize ---
+let W, H;
+function resize() {
+  const dpr = Math.min(devicePixelRatio, isMobile ? 1.5 : 2.0);
+  W = Math.floor(window.innerWidth * dpr);
+  H = Math.floor(window.innerHeight * dpr);
+  canvas.width = W; canvas.height = H;
+  gl.viewport(0, 0, W, H);
+  createFBOs();
+}
+
+// === SECTION 1: FBO INFRASTRUCTURE ===
+let roomFBO, avaFBO;
+function createFBO(w, h) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  const colorTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, colorTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTex, 0);
+  const depthTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, depthTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, w, h, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depthTex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fb, colorTex, depthTex, w, h };
+}
+function createFBOs() {
+  if (roomFBO) { gl.deleteFramebuffer(roomFBO.fb); gl.deleteTexture(roomFBO.colorTex); gl.deleteTexture(roomFBO.depthTex); }
+  if (avaFBO) { gl.deleteFramebuffer(avaFBO.fb); gl.deleteTexture(avaFBO.colorTex); gl.deleteTexture(avaFBO.depthTex); }
+  roomFBO = createFBO(W, H);
+  const avaScale = isMobile ? 0.35 : 0.5;
+  avaFBO = createFBO(Math.floor(W * avaScale), Math.floor(H * avaScale));
+}
+
+// === SECTION 2: SHADER COMPILATION ===
+function compileShader(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; }
+  return s;
+}
+function linkProgram(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compileShader(vs, gl.VERTEX_SHADER));
+  gl.attachShader(p, compileShader(fs, gl.FRAGMENT_SHADER));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(p)); return null; }
+  return p;
+}
+
+// === SECTION 3: ROOM SHADERS (WebGL2 upgraded) ===
+const ROOM_VS = `#version 300 es
+in vec3 aPos;
+in vec3 aNorm;
+in vec3 aCol;
+uniform mat4 uMVP;
+uniform mat4 uModel;
+out vec3 vCol;
+out vec3 vNorm;
+out vec3 vWorldPos;
+void main() {
+  gl_Position = uMVP * vec4(aPos, 1.0);
+  vCol = aCol;
+  vNorm = mat3(uModel) * aNorm;
+  vWorldPos = (uModel * vec4(aPos, 1.0)).xyz;
+}`;
+
+const ROOM_FS = `#version 300 es
+precision mediump float;
+in vec3 vCol;
+in vec3 vNorm;
+in vec3 vWorldPos;
+uniform vec3 uFirePos;
+uniform float uTime;
+out vec4 fragColor;
+void main() {
+  vec3 n = normalize(vNorm);
+  vec3 ambient = vCol * 0.15;
+  float flicker = 0.8 + 0.2 * sin(uTime * 8.0) * sin(uTime * 5.3 + 1.0);
+  vec3 toFire = uFirePos - vWorldPos;
+  float dist = length(toFire);
+  float atten = flicker / (1.0 + 0.3 * dist + 0.1 * dist * dist);
+  float diff = max(dot(n, normalize(toFire)), 0.0);
+  vec3 fireCol = vec3(1.0, 0.6, 0.15) * diff * atten;
+  float overhead = max(n.y, 0.0) * 0.08;
+  vec3 fillCol = vec3(0.5, 0.55, 0.7) * overhead;
+  fragColor = vec4(ambient + fireCol * vCol + fillCol * vCol, 1.0);
+}`;
+
+// Particle shaders
+const PART_VS = `#version 300 es
+in vec3 aPos;
+in float aLife;
+uniform mat4 uMVP;
+uniform float uSize;
+out float vLife;
+void main() {
+  gl_Position = uMVP * vec4(aPos, 1.0);
+  gl_PointSize = uSize * (1.0 - aLife * 0.5) / gl_Position.w * 300.0;
+  vLife = aLife;
+}`;
+
+const PART_FS = `#version 300 es
+precision mediump float;
+in float vLife;
+out vec4 fragColor;
+void main() {
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float r = dot(p, p);
+  if (r > 1.0) discard;
+  float alpha = (1.0 - r) * (1.0 - vLife);
+  vec3 col = mix(vec3(1.0, 0.8, 0.1), vec3(1.0, 0.2, 0.0), vLife);
+  fragColor = vec4(col, alpha * 0.35);
+}`;
+
+// === SECTION 4: AVA SDF SHADER ===
+const AVA_VS = `#version 300 es
+in vec2 aPos;
+out vec2 vUV;
+void main() { vUV = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+const MAX_STEPS = isMobile ? 32 : 48;
+const AVA_FS = `#version 300 es
+precision highp float;
+in vec2 vUV;
+out vec4 fragColor;
+uniform float uTime;
+uniform vec2 uResolution;
+uniform mat4 uInvVP;
+uniform vec3 uCamPos;
+uniform vec3 uAvaPos;
+uniform float uAvaYaw;
+uniform float uEmotion;
+uniform vec3 uFirePos;
+uniform float uNear;
+uniform float uFar;
+
+#define PI 3.14159265
+#define MAX_STEPS ${MAX_STEPS}
+#define MAX_DIST 20.0
+#define SURF_DIST 0.005
+
+// ─── SDF PRIMITIVES ───
+float sdSphere(vec3 p,float r){return length(p)-r;}
+float sdEllipsoid(vec3 p,vec3 r){float k0=length(p/r);float k1=length(p/(r*r));return k0*(k0-1.0)/k1;}
+float sdBox(vec3 p,vec3 b){vec3 q=abs(p)-b;return length(max(q,0.0))+min(max(q.x,max(q.y,q.z)),0.0);}
+float sdCapsule(vec3 p,vec3 a,vec3 b,float r){vec3 pa=p-a,ba=b-a;float h=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);return length(pa-ba*h)-r;}
+float sdCylinder(vec3 p,float r,float h){vec2 d=abs(vec2(length(p.xz),p.y))-vec2(r,h);return min(max(d.x,d.y),0.0)+length(max(d,0.0));}
+
+// ─── SMOOTH OPS ───
+float smin(float a,float b,float k){float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0);return mix(b,a,h)-k*h*(1.0-h);}
+float smax(float a,float b,float k){return -smin(-a,-b,k);}
+
+// ─── NOISE ───
+float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+float noise3(vec3 p){
+  vec3 i=floor(p),f=fract(p);
+  f=f*f*(3.0-2.0*f);
+  return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),
+                 mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+             mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),
+                 mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+
+mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
+
+// ═══ HEAD SDF ═══
+float sdHead(vec3 p, float emotion){
+  float skull = sdEllipsoid(p - vec3(0, 0.05, -0.02), vec3(0.52, 0.62, 0.58));
+  vec3 jp = p - vec3(0, -0.32, 0.12);
+  float jaw = sdEllipsoid(jp, vec3(0.34, 0.22, 0.32));
+  skull = smin(skull, jaw, 0.15);
+  float chin = sdSphere(p - vec3(0, -0.48, 0.28), 0.12);
+  skull = smin(skull, chin, 0.1);
+  float cheekL = sdEllipsoid(p - vec3(0.28, -0.08, 0.28), vec3(0.14, 0.08, 0.12));
+  float cheekR = sdEllipsoid(p - vec3(-0.28, -0.08, 0.28), vec3(0.14, 0.08, 0.12));
+  skull = smin(skull, cheekL, 0.12);
+  skull = smin(skull, cheekR, 0.12);
+  float browRidge = sdBox(p - vec3(0, 0.18, 0.38), vec3(0.3, 0.04, 0.08));
+  skull = smin(skull, browRidge, 0.08);
+  float eyeSocketL = sdEllipsoid(p - vec3(0.16, 0.08, 0.38), vec3(0.1, 0.07, 0.08));
+  float eyeSocketR = sdEllipsoid(p - vec3(-0.16, 0.08, 0.38), vec3(0.1, 0.07, 0.08));
+  skull = smax(skull, -eyeSocketL, 0.04);
+  skull = smax(skull, -eyeSocketR, 0.04);
+  float eyeL = sdSphere(p - vec3(0.155, 0.08, 0.40), 0.055);
+  float eyeR = sdSphere(p - vec3(-0.155, 0.08, 0.40), 0.055);
+  float lidAngle = -0.1 + emotion * 0.05;
+  vec3 uLidL = p - vec3(0.155, 0.12, 0.40);
+  uLidL.yz *= rot(lidAngle);
+  float upperLidL = sdBox(uLidL, vec3(0.07, 0.01, 0.06));
+  vec3 uLidR = p - vec3(-0.155, 0.12, 0.40);
+  uLidR.yz *= rot(lidAngle);
+  float upperLidR = sdBox(uLidR, vec3(0.07, 0.01, 0.06));
+  float noseBridge = sdCapsule(p, vec3(0, 0.12, 0.42), vec3(0, -0.06, 0.50), 0.03);
+  float noseBall = sdSphere(p - vec3(0, -0.08, 0.48), 0.055);
+  float nostrilL = sdSphere(p - vec3(0.035, -0.10, 0.44), 0.025);
+  float nostrilR = sdSphere(p - vec3(-0.035, -0.10, 0.44), 0.025);
+  float nose = smin(noseBridge, noseBall, 0.04);
+  nose = smin(nose, nostrilL, 0.02);
+  nose = smin(nose, nostrilR, 0.02);
+  skull = smin(skull, nose, 0.06);
+  float lipCurve = 0.0;
+  if(emotion > 2.5 && emotion < 3.5) lipCurve = 0.02;
+  if(emotion > 1.5 && emotion < 2.5) lipCurve = -0.01;
+  float upperLip = sdCapsule(p, vec3(-0.08, -0.2, 0.42), vec3(0.08, -0.2, 0.42), 0.022);
+  float lowerLip = sdCapsule(p, vec3(-0.07, -0.24 + lipCurve, 0.40), vec3(0.07, -0.24 + lipCurve, 0.40), 0.025);
+  skull = smin(skull, upperLip, 0.03);
+  skull = smin(skull, lowerLip, 0.03);
+  float earL = sdEllipsoid(p - vec3(0.50, 0.02, -0.02), vec3(0.04, 0.1, 0.06));
+  float earR = sdEllipsoid(p - vec3(-0.50, 0.02, -0.02), vec3(0.04, 0.1, 0.06));
+  skull = smin(skull, earL, 0.05);
+  skull = smin(skull, earR, 0.05);
+  float neck = sdCapsule(p, vec3(0, -0.42, 0.05), vec3(0, -0.80, 0.0), 0.12);
+  skull = smin(skull, neck, 0.12);
+  skull = min(skull, eyeL);
+  skull = min(skull, eyeR);
+  skull = min(skull, upperLidL);
+  skull = min(skull, upperLidR);
+  return skull;
+}
+
+// ═══ UNIFIED SDF ═══
+// Materials: 0=skin, 1=hair, 2=eyes, 3=clothing, 4=lips, 5=boots
+vec2 mapAva(vec3 p){
+  float emotion = uEmotion;
+  vec3 lp = p - uAvaPos;
+  lp.xz *= rot(-uAvaYaw);
+  float breath = sin(uTime * 1.2) * 0.005;
+  lp.y += breath;
+
+  // LOD: distance from camera determines detail level
+  float camDist = length(p - uCamPos);
+
+  // Head tilt
+  float tiltX = -0.05;
+  if(emotion > 0.5 && emotion < 1.5) tiltX = 0.08;
+  else if(emotion > 1.5 && emotion < 2.5) tiltX = -0.02;
+  else if(emotion > 2.5 && emotion < 3.5) tiltX = -0.1;
+  else if(emotion > 3.5) tiltX = 0.05;
+  vec3 headP = lp;
+  headP.yz *= rot(tiltX * 0.3);
+
+  // Head — always full detail (it's the face)
+  float head = sdHead(headP, emotion);
+
+  // Hair — skip noise at distance
+  vec3 hp = headP - vec3(0, 0.25, -0.1);
+  float hair = sdEllipsoid(hp, vec3(0.56, 0.45, 0.62));
+  float sideL = sdEllipsoid(headP - vec3(0.38, -0.15, 0.0), vec3(0.12, 0.35, 0.2));
+  float sideR = sdEllipsoid(headP - vec3(-0.38, -0.15, 0.0), vec3(0.12, 0.35, 0.2));
+  hair = smin(hair, sideL, 0.15);
+  hair = smin(hair, sideR, 0.15);
+  float back = sdEllipsoid(headP - vec3(0, -0.3, -0.25), vec3(0.30, 0.50, 0.20));
+  hair = smin(hair, back, 0.2);
+  if(camDist < 5.0) {
+    float wind = sin(headP.y * 3.0 + uTime * 1.2) * 0.03;
+    hair += wind * smoothstep(-0.2, -0.6, headP.y);
+    hair += noise3(headP * 12.0 + vec3(0, uTime * 0.3, 0)) * 0.015;
+  }
+  hair = max(hair, -(head - 0.02));
+
+  // Eyes
+  float eyes = min(
+    sdSphere(headP - vec3(0.155, 0.08, 0.40), 0.055),
+    sdSphere(headP - vec3(-0.155, 0.08, 0.40), 0.055)
+  );
+
+  // Lips
+  float lipCurve = 0.0;
+  if(emotion > 2.5 && emotion < 3.5) lipCurve = 0.02;
+  if(emotion > 1.5 && emotion < 2.5) lipCurve = -0.01;
+  float lips = min(
+    sdCapsule(headP, vec3(-0.08, -0.2, 0.42), vec3(0.08, -0.2, 0.42), 0.022),
+    sdCapsule(headP, vec3(-0.07, -0.24 + lipCurve, 0.40), vec3(0.07, -0.24 + lipCurve, 0.40), 0.025)
+  );
+
+  // Body — simplified torso + neck
+  vec3 bodyP = lp;
+  bodyP.y += breath;
+  float shoulders = sdEllipsoid(bodyP - vec3(0, -0.85, 0.0), vec3(0.55, 0.12, 0.22));
+  float torso = sdEllipsoid(bodyP - vec3(0, -1.15, 0.0), vec3(0.40, 0.30, 0.22));
+  float body = smin(shoulders, torso, 0.15);
+  float waist = sdEllipsoid(bodyP - vec3(0, -1.45, 0.0), vec3(0.35, 0.15, 0.20));
+  body = smin(body, waist, 0.12);
+
+  // Arms — simple capsules
+  float armL = sdCapsule(bodyP, vec3(0.42, -0.90, 0.05), vec3(0.25, -1.38, 0.25), 0.045);
+  float armR = sdCapsule(bodyP, vec3(-0.42, -0.90, 0.05), vec3(-0.25, -1.38, 0.25), 0.045);
+  float arms = min(armL, armR);
+
+  // Legs — simple capsules
+  float legL = sdCapsule(bodyP, vec3(0.15, -1.55, 0.0), vec3(0.11, -2.90, 0.06), 0.08);
+  float legR = sdCapsule(bodyP, vec3(-0.15, -1.55, 0.0), vec3(-0.11, -2.90, 0.06), 0.08);
+  float legs = min(legL, legR);
+
+  // Material assignment
+  vec2 res = vec2(head, 0.0);
+  if(hair < res.x) res = vec2(hair, 1.0);
+  if(eyes < res.x - 0.01) res = vec2(eyes, 2.0);
+  if(lips < res.x + 0.005) res = vec2(lips, 4.0);
+  if(body < res.x) res = vec2(body, 3.0);
+  if(arms < res.x) res = vec2(arms, 0.0);
+  if(legs < res.x) res = vec2(legs, mix(3.0, 5.0, step(-2.85, -bodyP.y)));
+
+  return res;
+}
+
+float mapDist(vec3 p){ return mapAva(p).x; }
+
+// ═══ NORMAL ═══
+vec3 calcNormal(vec3 p){
+  vec2 e=vec2(0.002,0);
+  return normalize(vec3(
+    mapDist(p+e.xyy)-mapDist(p-e.xyy),
+    mapDist(p+e.yxy)-mapDist(p-e.yxy),
+    mapDist(p+e.yyx)-mapDist(p-e.yyx)
+  ));
+}
+
+// ═══ RAY MARCH ═══
+vec2 rayMarch(vec3 ro, vec3 rd){
+  float t = 0.0;
+  float matID = -1.0;
+  for(int i = 0; i < MAX_STEPS; i++){
+    vec3 p = ro + rd * t;
+    vec2 res = mapAva(p);
+    if(res.x < SURF_DIST){ matID = res.y; break; }
+    if(t > MAX_DIST) break;
+    t += res.x * 0.85;
+  }
+  return vec2(t, matID);
+}
+
+// ═══ AMBIENT OCCLUSION ═══
+float calcAO(vec3 p, vec3 n){
+  float occ = 0.0;
+  float sca = 1.0;
+  for(int i = 0; i < 3; i++){
+    float h = 0.02 + 0.15 * float(i);
+    float d = mapDist(p + n * h);
+    occ += (h - d) * sca;
+    sca *= 0.7;
+  }
+  return clamp(1.0 - 1.5 * occ, 0.0, 1.0);
+}
+
+// ═══ SUBSURFACE SCATTERING ═══
+float sssCalc(vec3 p, vec3 n, vec3 ld){
+  float wrap = max(0.0, dot(n, ld) * 0.5 + 0.5);
+  float thickness = mapDist(p - n * 0.1) + mapDist(p - n * 0.2);
+  return wrap * smoothstep(-0.1, 0.5, thickness) * 0.3;
+}
+
+// ═══ COOK-TORRANCE BRDF ═══
+float D_GGX(float NdotH, float r){float a=r*r;float a2=a*a;float d=NdotH*NdotH*(a2-1.0)+1.0;return a2/(PI*d*d);}
+float G_SchlickGGX(float NdotV, float r){float k=((r+1.0)*(r+1.0))/8.0;return NdotV/(NdotV*(1.0-k)+k);}
+float G_Smith(float NdotV, float NdotL, float r){return G_SchlickGGX(NdotV,r)*G_SchlickGGX(NdotL,r);}
+vec3 F_Schlick(float ct, vec3 F0){return F0+(1.0-F0)*pow(clamp(1.0-ct,0.0,1.0),5.0);}
+vec3 cookTorrance(vec3 N,vec3 V,vec3 L,vec3 albedo,float metallic,float roughness){
+  vec3 H=normalize(V+L);
+  float NdotV=max(dot(N,V),0.001);
+  float NdotL=max(dot(N,L),0.0);
+  float NdotH=max(dot(N,H),0.0);
+  float HdotV=max(dot(H,V),0.0);
+  vec3 F0=mix(vec3(0.04),albedo,metallic);
+  float D=D_GGX(NdotH,roughness);
+  float G=G_Smith(NdotV,NdotL,roughness);
+  vec3 F=F_Schlick(HdotV,F0);
+  vec3 spec=D*G*F/(4.0*NdotV*NdotL+0.0001);
+  vec3 kD=(vec3(1.0)-F)*(1.0-metallic);
+  return (kD*albedo/PI+spec)*NdotL;
+}
+
+// ═══ MATERIALS ═══
+void getMatProps(float matID, vec3 p, float emotion, out vec3 albedo, out float roughness, out float metallic, out bool doSSS){
+  doSSS = false;
+  if(matID < 0.5){
+    // Skin
+    albedo = vec3(0.75, 0.55, 0.42);
+    albedo += noise3(p * 30.0) * 0.05 * vec3(0.1, -0.02, -0.04);
+    if(emotion > 2.5 && emotion < 3.5){
+      float flush = smoothstep(0.3, 0.0, length(p.xz - vec2(0.22, 0.25)));
+      flush += smoothstep(0.3, 0.0, length(p.xz - vec2(-0.22, 0.25)));
+      albedo += flush * vec3(0.08, 0.02, 0.01) * 0.5;
+    }
+    roughness = 0.45; metallic = 0.0; doSSS = true;
+  } else if(matID < 1.5){
+    // Hair
+    albedo = vec3(0.08, 0.06, 0.05);
+    albedo += noise3(p * 40.0) * vec3(0.04, 0.03, 0.02);
+    roughness = 0.6; metallic = 0.0;
+  } else if(matID < 2.5){
+    // Eyes — storm grey
+    float irisR = length(p.xz - vec2(sign(p.x) * 0.155, 0.40));
+    if(irisR < 0.045){
+      albedo = vec3(0.35, 0.40, 0.48);
+      if(irisR < 0.015) albedo = vec3(0.02);
+      albedo += noise3(normalize(vec3(p.x - sign(p.x)*0.155, p.y-0.08, p.z-0.40))*20.0) * vec3(0.05,0.06,0.08);
+    } else {
+      albedo = vec3(0.92, 0.91, 0.90);
+    }
+    roughness = 0.05; metallic = 0.0;
+  } else if(matID < 3.5){
+    // Clothing — dark leather apron
+    albedo = vec3(0.14, 0.11, 0.08);
+    albedo += sin(p.y * 60.0) * sin(p.x * 40.0) * 0.02;
+    roughness = 0.7; metallic = 0.0;
+  } else if(matID < 4.5){
+    // Lips
+    albedo = vec3(0.65, 0.42, 0.38);
+    if(emotion > 2.5 && emotion < 3.5) albedo += vec3(0.05, 0.01, 0.01);
+    roughness = 0.3; metallic = 0.0; doSSS = true;
+  } else {
+    // Boots
+    albedo = vec3(0.06, 0.05, 0.04);
+    roughness = 0.5; metallic = 0.2;
+  }
+}
+
+// ═══ RENDER AVA ═══
+void main(){
+  vec2 ndc = vUV * 2.0 - 1.0;
+  // Reconstruct ray from inverse VP
+  vec4 nearP = uInvVP * vec4(ndc, -1.0, 1.0);
+  vec4 farP = uInvVP * vec4(ndc, 1.0, 1.0);
+  vec3 ro = nearP.xyz / nearP.w;
+  vec3 rd = normalize(farP.xyz / farP.w - ro);
+
+  // Bounding sphere test — early reject
+  vec3 toAva = uAvaPos - ro;
+  float tca = dot(toAva, rd);
+  vec3 closest = ro + rd * max(tca, 0.0) - uAvaPos;
+  if(length(closest) > 2.0){ discard; }
+
+  vec2 res = rayMarch(ro, rd);
+  float t = res.x;
+  float matID = res.y;
+
+  if(t >= MAX_DIST || matID < 0.0){ discard; }
+
+  vec3 p = ro + rd * t;
+  vec3 n = calcNormal(p);
+  float ao = calcAO(p, n);
+
+  // Transform p to local for material lookup
+  vec3 lp = p - uAvaPos;
+  lp.xz *= rot(-uAvaYaw);
+  lp.y += sin(uTime * 1.2) * 0.005;
+  float tiltX = -0.05;
+  if(uEmotion > 0.5 && uEmotion < 1.5) tiltX = 0.08;
+  else if(uEmotion > 1.5 && uEmotion < 2.5) tiltX = -0.02;
+  else if(uEmotion > 2.5 && uEmotion < 3.5) tiltX = -0.1;
+  else if(uEmotion > 3.5) tiltX = 0.05;
+  lp.yz *= rot(tiltX * 0.3);
+
+  vec3 albedo; float roughness, metallic; bool doSSS;
+  getMatProps(matID, lp, uEmotion, albedo, roughness, metallic, doSSS);
+
+  // Fire lighting — same formula as room shader
+  float flicker = 0.8 + 0.2 * sin(uTime * 8.0) * sin(uTime * 5.3 + 1.0);
+  vec3 fireDir = normalize(uFirePos - p);
+  float fireDist = length(uFirePos - p);
+  float fireAtten = flicker / (1.0 + 0.15 * fireDist + 0.05 * fireDist * fireDist);
+  vec3 fireColor = vec3(1.0, 0.7, 0.3);
+
+  vec3 V = normalize(uCamPos - p);
+  vec3 col = vec3(0.0);
+
+  // Cook-Torrance with fire light
+  col += cookTorrance(n, V, fireDir, albedo, metallic, roughness) * fireColor * fireAtten * 2.0;
+
+  // Ambient
+  col += albedo * vec3(0.06, 0.05, 0.04) * ao;
+
+  // Cool fill from above
+  float fillDiff = max(n.y, 0.0);
+  col += albedo * vec3(0.04, 0.05, 0.07) * fillDiff * ao;
+
+  // SSS for skin/lips
+  if(doSSS){
+    float sss = sssCalc(p, n, fireDir);
+    col += albedo * sss * fireColor * fireAtten * 0.5;
+  }
+
+  // Rim light
+  float rim = pow(1.0 - max(0.0, dot(n, V)), 4.0);
+  col += rim * vec3(0.15, 0.10, 0.06) * 0.3 * ao;
+
+  // Eye specular highlight
+  if(matID > 1.5 && matID < 2.5){
+    float shine = pow(max(0.0, dot(reflect(-fireDir, n), V)), 48.0);
+    col += shine * fireColor * 0.8;
+  }
+
+  // Hair highlight
+  if(matID > 0.5 && matID < 1.5){
+    float highlight = pow(max(0.0, dot(n, fireDir)), 8.0);
+    col += highlight * vec3(0.15, 0.10, 0.05) * fireAtten;
+  }
+
+  // ACES tone mapping
+  col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
+
+  // Write depth as linear for compositing
+  float depth = length(p - uCamPos);
+  float ndcDepth = (2.0 * uNear * uFar) / (uFar + uNear - (2.0 * depth / (uFar - uNear)) * (uFar - uNear));
+
+  fragColor = vec4(col, 1.0);
+  gl_FragDepth = (1.0/depth - 1.0/uNear) / (1.0/uFar - 1.0/uNear);
+}`;
+
+// === SECTION 5: COMPOSITE SHADER ===
+const COMP_VS = `#version 300 es
+in vec2 aPos;
+out vec2 vUV;
+void main(){ vUV = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0, 1); }`;
+
+const COMP_FS = `#version 300 es
+precision mediump float;
+in vec2 vUV;
+uniform sampler2D uRoomColor;
+uniform sampler2D uRoomDepth;
+uniform sampler2D uAvaColor;
+uniform sampler2D uAvaDepth;
+out vec4 fragColor;
+void main(){
+  vec4 room = texture(uRoomColor, vUV);
+  float roomD = texture(uRoomDepth, vUV).r;
+  vec4 ava = texture(uAvaColor, vUV);
+  float avaD = texture(uAvaDepth, vUV).r;
+  if(ava.a > 0.5 && avaD < roomD){
+    // Subtle vignette
+    vec2 vig = vUV * (1.0 - vUV);
+    float v = pow(vig.x * vig.y * 16.0, 0.15);
+    fragColor = vec4(ava.rgb * v, 1.0);
+  } else {
+    vec2 vig = vUV * (1.0 - vUV);
+    float v = pow(vig.x * vig.y * 16.0, 0.15);
+    fragColor = vec4(room.rgb * v, 1.0);
+  }
+}`;
+
+// === COMPILE ALL PROGRAMS ===
+const roomProg = linkProgram(ROOM_VS, ROOM_FS);
+const partProg = linkProgram(PART_VS, PART_FS);
+const avaProg = linkProgram(AVA_FS.includes('#version') ? AVA_VS : AVA_VS, AVA_FS);
+const compProg = linkProgram(COMP_VS, COMP_FS);
+
+// Room uniform locations
+const ru = {
+  MVP: gl.getUniformLocation(roomProg, 'uMVP'),
+  Model: gl.getUniformLocation(roomProg, 'uModel'),
+  FirePos: gl.getUniformLocation(roomProg, 'uFirePos'),
+  Time: gl.getUniformLocation(roomProg, 'uTime')
+};
+const ra = {
+  Pos: gl.getAttribLocation(roomProg, 'aPos'),
+  Norm: gl.getAttribLocation(roomProg, 'aNorm'),
+  Col: gl.getAttribLocation(roomProg, 'aCol')
+};
+
+// Particle locations
+const pu = {
+  MVP: gl.getUniformLocation(partProg, 'uMVP'),
+  Size: gl.getUniformLocation(partProg, 'uSize')
+};
+const pa = {
+  Pos: gl.getAttribLocation(partProg, 'aPos'),
+  Life: gl.getAttribLocation(partProg, 'aLife')
+};
+
+// Ava uniform locations
+const au = {
+  Time: gl.getUniformLocation(avaProg, 'uTime'),
+  Res: gl.getUniformLocation(avaProg, 'uResolution'),
+  InvVP: gl.getUniformLocation(avaProg, 'uInvVP'),
+  CamPos: gl.getUniformLocation(avaProg, 'uCamPos'),
+  AvaPos: gl.getUniformLocation(avaProg, 'uAvaPos'),
+  AvaYaw: gl.getUniformLocation(avaProg, 'uAvaYaw'),
+  Emotion: gl.getUniformLocation(avaProg, 'uEmotion'),
+  FirePos: gl.getUniformLocation(avaProg, 'uFirePos'),
+  Near: gl.getUniformLocation(avaProg, 'uNear'),
+  Far: gl.getUniformLocation(avaProg, 'uFar')
+};
+
+// Composite locations
+const cu = {
+  RoomColor: gl.getUniformLocation(compProg, 'uRoomColor'),
+  RoomDepth: gl.getUniformLocation(compProg, 'uRoomDepth'),
+  AvaColor: gl.getUniformLocation(compProg, 'uAvaColor'),
+  AvaDepth: gl.getUniformLocation(compProg, 'uAvaDepth')
+};
+
+// === FULLSCREEN QUAD ===
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function drawQuad(prog, posLoc) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// === SECTION 6: MATH HELPERS ===
+function mat4Perspective(fov, aspect, near, far) {
+  const f = 1.0 / Math.tan(fov / 2), nf = 1 / (near - far);
+  return new Float32Array([f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0]);
+}
+function mat4LookAt(eye, center, up) {
+  const zx=eye[0]-center[0],zy=eye[1]-center[1],zz=eye[2]-center[2];
+  let len=1/Math.sqrt(zx*zx+zy*zy+zz*zz);
+  const fz=[zx*len,zy*len,zz*len];
+  const xx=up[1]*fz[2]-up[2]*fz[1],xy=up[2]*fz[0]-up[0]*fz[2],xz=up[0]*fz[1]-up[1]*fz[0];
+  len=1/Math.sqrt(xx*xx+xy*xy+xz*xz);
+  const fx=[xx*len,xy*len,xz*len];
+  const ux=fz[1]*fx[2]-fz[2]*fx[1],uy=fz[2]*fx[0]-fz[0]*fx[2],uz=fz[0]*fx[1]-fz[1]*fx[0];
+  return new Float32Array([fx[0],ux,fz[0],0,fx[1],uy,fz[1],0,fx[2],uz,fz[2],0,
+    -(fx[0]*eye[0]+fx[1]*eye[1]+fx[2]*eye[2]),-(ux*eye[0]+uy*eye[1]+uz*eye[2]),-(fz[0]*eye[0]+fz[1]*eye[1]+fz[2]*eye[2]),1]);
+}
+function mat4Mul(a, b) {
+  const o=new Float32Array(16);
+  for(let i=0;i<4;i++)for(let j=0;j<4;j++)o[j*4+i]=a[i]*b[j*4]+a[4+i]*b[j*4+1]+a[8+i]*b[j*4+2]+a[12+i]*b[j*4+3];
+  return o;
+}
+function mat4Identity(){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1])}
+function mat4Translate(x,y,z){const m=mat4Identity();m[12]=x;m[13]=y;m[14]=z;return m}
+function mat4RotY(a){const c=Math.cos(a),s=Math.sin(a),m=mat4Identity();m[0]=c;m[2]=s;m[8]=-s;m[10]=c;return m}
+function mat4Inverse(m) {
+  const inv = new Float32Array(16);
+  inv[0]=m[5]*(m[10]*m[15]-m[14]*m[11])-m[9]*(m[6]*m[15]-m[14]*m[7])+m[13]*(m[6]*m[11]-m[10]*m[7]);
+  inv[4]=-(m[4]*(m[10]*m[15]-m[14]*m[11])-m[8]*(m[6]*m[15]-m[14]*m[7])+m[12]*(m[6]*m[11]-m[10]*m[7]));
+  inv[8]=m[4]*(m[9]*m[15]-m[13]*m[11])-m[8]*(m[5]*m[15]-m[13]*m[7])+m[12]*(m[5]*m[11]-m[9]*m[7]);
+  inv[12]=-(m[4]*(m[9]*m[14]-m[13]*m[10])-m[8]*(m[5]*m[14]-m[13]*m[6])+m[12]*(m[5]*m[10]-m[9]*m[6]));
+  inv[1]=-(m[1]*(m[10]*m[15]-m[14]*m[11])-m[9]*(m[2]*m[15]-m[14]*m[3])+m[13]*(m[2]*m[11]-m[10]*m[3]));
+  inv[5]=m[0]*(m[10]*m[15]-m[14]*m[11])-m[8]*(m[2]*m[15]-m[14]*m[3])+m[12]*(m[2]*m[11]-m[10]*m[3]);
+  inv[9]=-(m[0]*(m[9]*m[15]-m[13]*m[11])-m[8]*(m[1]*m[15]-m[13]*m[3])+m[12]*(m[1]*m[11]-m[9]*m[3]));
+  inv[13]=m[0]*(m[9]*m[14]-m[13]*m[10])-m[8]*(m[1]*m[14]-m[13]*m[2])+m[12]*(m[1]*m[10]-m[9]*m[2]);
+  inv[2]=m[1]*(m[6]*m[15]-m[14]*m[7])-m[5]*(m[2]*m[15]-m[14]*m[3])+m[13]*(m[2]*m[7]-m[6]*m[3]);
+  inv[6]=-(m[0]*(m[6]*m[15]-m[14]*m[7])-m[4]*(m[2]*m[15]-m[14]*m[3])+m[12]*(m[2]*m[7]-m[6]*m[3]));
+  inv[10]=m[0]*(m[5]*m[15]-m[13]*m[7])-m[4]*(m[1]*m[15]-m[13]*m[3])+m[12]*(m[1]*m[7]-m[5]*m[3]);
+  inv[14]=-(m[0]*(m[5]*m[14]-m[13]*m[6])-m[4]*(m[1]*m[14]-m[13]*m[2])+m[12]*(m[1]*m[6]-m[5]*m[2]));
+  inv[3]=-(m[1]*(m[6]*m[11]-m[10]*m[7])-m[5]*(m[2]*m[11]-m[10]*m[3])+m[9]*(m[2]*m[7]-m[6]*m[3]));
+  inv[7]=m[0]*(m[6]*m[11]-m[10]*m[7])-m[4]*(m[2]*m[11]-m[10]*m[3])+m[8]*(m[2]*m[7]-m[6]*m[3]);
+  inv[11]=-(m[0]*(m[5]*m[11]-m[9]*m[7])-m[4]*(m[1]*m[11]-m[9]*m[3])+m[8]*(m[1]*m[7]-m[5]*m[3]));
+  inv[15]=m[0]*(m[5]*m[10]-m[9]*m[6])-m[4]*(m[1]*m[10]-m[9]*m[2])+m[8]*(m[1]*m[6]-m[5]*m[2]);
+  let det=m[0]*inv[0]+m[1]*inv[4]+m[2]*inv[8]+m[3]*inv[12];
+  if(Math.abs(det)<1e-10)return mat4Identity();
+  det=1.0/det;
+  for(let i=0;i<16;i++)inv[i]*=det;
+  return inv;
+}
+
+// === SECTION 7: ROOM MESHES ===
+function createMesh(verts, norms, cols, indices) {
+  const vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.STATIC_DRAW);
+  const nb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,nb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(norms),gl.STATIC_DRAW);
+  const cb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,cb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(cols),gl.STATIC_DRAW);
+  const ib=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);
+  return{vb,nb,cb,ib,count:indices.length};
+}
+function drawMesh(mesh, modelMat) {
+  gl.uniformMatrix4fv(ru.Model, false, modelMat);
+  gl.uniformMatrix4fv(ru.MVP, false, mat4Mul(vpMat, modelMat));
+  gl.bindBuffer(gl.ARRAY_BUFFER,mesh.vb);gl.enableVertexAttribArray(ra.Pos);gl.vertexAttribPointer(ra.Pos,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,mesh.nb);gl.enableVertexAttribArray(ra.Norm);gl.vertexAttribPointer(ra.Norm,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,mesh.cb);gl.enableVertexAttribArray(ra.Col);gl.vertexAttribPointer(ra.Col,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,mesh.ib);gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_SHORT,0);
+}
+function makeBox(w,h,d,r,g,b){const hw=w/2,hh=h/2,hd=d/2;const v=[-hw,-hh,hd,hw,-hh,hd,hw,hh,hd,-hw,hh,hd,hw,-hh,-hd,-hw,-hh,-hd,-hw,hh,-hd,hw,hh,-hd,-hw,hh,hd,hw,hh,hd,hw,hh,-hd,-hw,hh,-hd,-hw,-hh,-hd,hw,-hh,-hd,hw,-hh,hd,-hw,-hh,hd,hw,-hh,hd,hw,-hh,-hd,hw,hh,-hd,hw,hh,hd,-hw,-hh,-hd,-hw,-hh,hd,-hw,hh,hd,-hw,hh,-hd];const n=[0,0,1,0,0,1,0,0,1,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,1,0,0,1,0,0,1,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,1,0,0,1,0,0,1,0,0,1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0];const c=[];for(let i=0;i<24;i++)c.push(r,g,b);const idx=[];for(let i=0;i<6;i++){const o=i*4;idx.push(o,o+1,o+2,o,o+2,o+3)}return createMesh(v,n,c,idx)}
+function makeCylinder(rad,h,seg,r,g,b){const v=[],n=[],c=[],idx=[];for(let i=0;i<=seg;i++){const a=(i/seg)*Math.PI*2,cs=Math.cos(a),sn=Math.sin(a);v.push(cs*rad,0,sn*rad,cs*rad,h,sn*rad);n.push(cs,0,sn,cs,0,sn);c.push(r,g,b,r,g,b)}for(let i=0;i<seg;i++){const a=i*2,b2=a+1,c2=a+2,d=a+3;idx.push(a,c2,b2,b2,c2,d)}return createMesh(v,n,c,idx)}
+
+// Build room meshes
+const floor=makeBox(16,0.2,16,0.08,0.07,0.06);
+const wallN=makeBox(16,4,0.3,0.1,0.08,0.07),wallS=makeBox(16,4,0.3,0.1,0.08,0.07);
+const wallE=makeBox(0.3,4,16,0.1,0.08,0.07),wallW=makeBox(0.3,4,16,0.1,0.08,0.07);
+const ceiling=makeBox(16,0.15,16,0.06,0.05,0.04);
+const anvilBase=makeBox(0.8,0.6,0.5,0.15,0.15,0.17),anvilTop=makeBox(1.0,0.15,0.6,0.18,0.18,0.2);
+const anvilHorn=makeBox(0.3,0.12,0.15,0.2,0.2,0.22);
+const firePit=makeCylinder(0.7,0.3,16,0.12,0.1,0.08);
+const bench1=makeBox(2,0.9,0.8,0.2,0.12,0.06),bench2=makeBox(2,0.9,0.8,0.2,0.12,0.06);
+const benchTop1=makeBox(2.1,0.08,0.9,0.35,0.22,0.1),benchTop2=makeBox(2.1,0.08,0.9,0.35,0.22,0.1);
+const hood=makeBox(1.8,0.1,1.8,0.08,0.07,0.06);
+const beam=makeBox(0.2,4,0.2,0.14,0.08,0.04);
+const toolRack=makeBox(1.5,0.08,0.15,0.25,0.15,0.07);
+const hammerHead=makeBox(0.18,0.12,0.12,0.4,0.4,0.42);
+const avaRing=makeCylinder(0.5,0.02,24,0.8,0.62,0.1);
+
+// === SECTION 8: FIRE PARTICLES ===
+const NUM_P=120;
+const pPos=new Float32Array(NUM_P*3),pLife=new Float32Array(NUM_P),pVel=new Float32Array(NUM_P*3);
+const FIRE_X=0,FIRE_Y=0.35,FIRE_Z=-1.5;
+function resetP(i){pPos[i*3]=FIRE_X+(Math.random()-.5)*.4;pPos[i*3+1]=FIRE_Y;pPos[i*3+2]=FIRE_Z+(Math.random()-.5)*.4;pVel[i*3]=(Math.random()-.5)*.3;pVel[i*3+1]=1+Math.random()*1.5;pVel[i*3+2]=(Math.random()-.5)*.3;pLife[i]=0}
+for(let i=0;i<NUM_P;i++){resetP(i);pLife[i]=Math.random()}
+const pPosBuf=gl.createBuffer(),pLifeBuf=gl.createBuffer();
+
+// === SECTION 9: PLAYER & INPUT ===
+let px=0,pz=4,py=1.5,yaw=Math.PI,pitch=0;
+const MOVE_SPEED=3,LOOK_SPEED=0.003,ROOM_HALF=7.5;
+const keys={};
+let mouseLocked=false;
+document.addEventListener('keydown',e=>{keys[e.code]=true});
+document.addEventListener('keyup',e=>{keys[e.code]=false});
+canvas.addEventListener('click',()=>{if(!mouseLocked)canvas.requestPointerLock()});
+document.addEventListener('pointerlockchange',()=>{mouseLocked=document.pointerLockElement===canvas});
+document.addEventListener('mousemove',e=>{if(!mouseLocked)return;yaw-=e.movementX*LOOK_SPEED;pitch-=e.movementY*LOOK_SPEED;pitch=Math.max(-1.2,Math.min(1.2,pitch))});
+
+// Touch
+let touchMoveId=null,touchLookId=null,touchStartX=0,touchStartY=0,touchMoveX=0,touchMoveY=0,touchLookDx=0,touchLookDy=0;
+const jRing=document.getElementById('joystick-ring');
+document.getElementById('touch-left').addEventListener('touchstart',e=>{e.preventDefault();const t=e.changedTouches[0];touchMoveId=t.identifier;touchStartX=t.clientX;touchStartY=t.clientY;touchMoveX=0;touchMoveY=0;jRing.style.display='block';jRing.style.left=(t.clientX-50)+'px';jRing.style.top=(t.clientY-50)+'px'},{passive:false});
+document.getElementById('touch-left').addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches)if(t.identifier===touchMoveId){touchMoveX=Math.max(-1,Math.min(1,(t.clientX-touchStartX)/40));touchMoveY=Math.max(-1,Math.min(1,(t.clientY-touchStartY)/40));document.getElementById('joystick-knob').style.transform=`translate(calc(-50% + ${touchMoveX*30}px), calc(-50% + ${touchMoveY*30}px))`}},{passive:false});
+document.getElementById('touch-left').addEventListener('touchend',e=>{for(const t of e.changedTouches)if(t.identifier===touchMoveId){touchMoveId=null;touchMoveX=0;touchMoveY=0;jRing.style.display='none';document.getElementById('joystick-knob').style.transform='translate(-50%,-50%)'}});
+document.getElementById('touch-right').addEventListener('touchstart',e=>{e.preventDefault();const t=e.changedTouches[0];touchLookId=t.identifier;touchStartX=t.clientX;touchStartY=t.clientY},{passive:false});
+document.getElementById('touch-right').addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches)if(t.identifier===touchLookId){touchLookDx=(t.clientX-touchStartX)*.004;touchLookDy=(t.clientY-touchStartY)*.004;touchStartX=t.clientX;touchStartY=t.clientY}},{passive:false});
+document.getElementById('touch-right').addEventListener('touchend',e=>{for(const t of e.changedTouches)if(t.identifier===touchLookId){touchLookId=null;touchLookDx=0;touchLookDy=0}});
+
+// === SECTION 10: AVA NPC STATE ===
+const AVA_X=-3,AVA_Z=-3,AVA_Y=0;
+let avaGreeted=false,dialogueTimer=0;
+let emotionCurrent=0,emotionTarget=0;
+function checkAva(){
+  const dx=px-AVA_X,dz=pz-AVA_Z,dist=Math.sqrt(dx*dx+dz*dz);
+  if(dist<2.5){emotionTarget=3.0;if(!avaGreeted){avaGreeted=true;document.getElementById('dialogue-text').textContent="Welcome home. Take your time. There's no rush here.";document.getElementById('dialogue').classList.add('show');dialogueTimer=6;document.getElementById('hint').style.opacity='0'}}
+  else{emotionTarget=0.0}
+}
+
+// === SECTION 11: RENDER LOOP ===
+let lastTime=performance.now(),vpMat,time=0;
+let frameCount=0,lastFpsTime=performance.now(),currentFps=0;
+let sdfEnabled=true,sdfFrameTime=0;
+const NEAR=0.1,FAR=100.0;
+window.addEventListener('resize',resize);
+resize();
+
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min((now-lastTime)/1000,0.05);
+  lastTime=now;time+=dt;
+
+  // FPS
+  frameCount++;
+  if(now-lastFpsTime>500){currentFps=Math.round(frameCount/((now-lastFpsTime)/1000));document.getElementById('hud-fps').textContent=currentFps+' FPS';frameCount=0;lastFpsTime=now}
+
+  // Movement
+  const fwd=[Math.sin(yaw),0,Math.cos(yaw)],right=[Math.cos(yaw),0,-Math.sin(yaw)];
+  let mx=0,mz=0;
+  if(keys['KeyW']||keys['ArrowUp']){mx+=fwd[0];mz+=fwd[2]}
+  if(keys['KeyS']||keys['ArrowDown']){mx-=fwd[0];mz-=fwd[2]}
+  if(keys['KeyA']||keys['ArrowLeft']){mx-=right[0];mz-=right[2]}
+  if(keys['KeyD']||keys['ArrowRight']){mx+=right[0];mz+=right[2]}
+  if(touchMoveId!==null){mx+=right[0]*touchMoveX+fwd[0]*(-touchMoveY);mz+=right[2]*touchMoveX+fwd[2]*(-touchMoveY)}
+  if(touchLookId!==null){yaw-=touchLookDx;pitch-=touchLookDy;pitch=Math.max(-1.2,Math.min(1.2,pitch));touchLookDx=0;touchLookDy=0}
+  const mlen=Math.sqrt(mx*mx+mz*mz);
+  if(mlen>0){mx=mx/mlen*MOVE_SPEED*dt;mz=mz/mlen*MOVE_SPEED*dt;const nx=px+mx,nz=pz+mz;if(nx>-ROOM_HALF+.4&&nx<ROOM_HALF-.4)px=nx;if(nz>-ROOM_HALF+.4&&nz<ROOM_HALF-.4)pz=nz}
+  py=mlen>0?1.5+Math.sin(time*8)*.03:1.5;
+
+  // Emotion interpolation
+  emotionCurrent += (emotionTarget - emotionCurrent) * dt * 2.0;
+
+  checkAva();
+  if(dialogueTimer>0){dialogueTimer-=dt;if(dialogueTimer<=0)document.getElementById('dialogue').classList.remove('show')}
+
+  // Camera
+  const eyeX=px,eyeY=py,eyeZ=pz;
+  const lookX=px+Math.sin(yaw)*Math.cos(pitch),lookY=py+Math.sin(pitch),lookZ=pz+Math.cos(yaw)*Math.cos(pitch);
+  const view=mat4LookAt([eyeX,eyeY,eyeZ],[lookX,lookY,lookZ],[0,1,0]);
+  const proj=mat4Perspective(1.1,W/H,NEAR,FAR);
+  vpMat=mat4Mul(proj,view);
+  const invVP=mat4Inverse(vpMat);
+
+  // Ava yaw (face player)
+  const avaYaw=Math.atan2(px-AVA_X,pz-AVA_Z);
+
+  // ═══ PASS 1: ROOM → FBO ═══
+  gl.bindFramebuffer(gl.FRAMEBUFFER,roomFBO.fb);
+  gl.viewport(0,0,roomFBO.w,roomFBO.h);
+  gl.clearColor(0.02,0.015,0.01,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.CULL_FACE);
+  gl.useProgram(roomProg);
+  gl.uniform3f(ru.FirePos,FIRE_X,FIRE_Y+0.5,FIRE_Z);
+  gl.uniform1f(ru.Time,time);
+
+  // Draw room
+  drawMesh(floor,mat4Translate(0,-0.1,0));
+  drawMesh(ceiling,mat4Translate(0,4,0));
+  drawMesh(wallN,mat4Translate(0,2,-8));drawMesh(wallS,mat4Translate(0,2,8));
+  drawMesh(wallE,mat4Translate(8,2,0));drawMesh(wallW,mat4Translate(-8,2,0));
+  const am=mat4Translate(2.5,0,0);
+  drawMesh(anvilBase,mat4Mul(am,mat4Translate(0,0.3,0)));
+  drawMesh(anvilTop,mat4Mul(am,mat4Translate(0,0.68,0)));
+  drawMesh(anvilHorn,mat4Mul(am,mat4Translate(0.6,0.68,0)));
+  drawMesh(hammerHead,mat4Mul(am,mat4Translate(-0.15,0.82,0.1)));
+  drawMesh(firePit,mat4Translate(FIRE_X,0,FIRE_Z));
+  drawMesh(hood,mat4Translate(FIRE_X,3.2,FIRE_Z));
+  drawMesh(bench1,mat4Mul(mat4Translate(-5,0.45,-2),mat4RotY(Math.PI/2)));
+  drawMesh(benchTop1,mat4Mul(mat4Translate(-5,0.94,-2),mat4RotY(Math.PI/2)));
+  drawMesh(bench2,mat4Mul(mat4Translate(5,0.45,2),mat4RotY(Math.PI/2)));
+  drawMesh(benchTop2,mat4Mul(mat4Translate(5,0.94,2),mat4RotY(Math.PI/2)));
+  drawMesh(toolRack,mat4Translate(0,2.2,-7.7));drawMesh(toolRack,mat4Translate(0,1.7,-7.7));
+  drawMesh(beam,mat4Translate(-7,2,-7));drawMesh(beam,mat4Translate(7,2,-7));
+  drawMesh(beam,mat4Translate(-7,2,7));drawMesh(beam,mat4Translate(7,2,7));
+  // Gold ring under Ava
+  drawMesh(avaRing,mat4Translate(AVA_X,0,AVA_Z));
+
+  // Fire particles
+  for(let i=0;i<NUM_P;i++){pLife[i]+=dt*(.8+Math.random()*.4);pPos[i*3]+=pVel[i*3]*dt*.3;pPos[i*3+1]+=pVel[i*3+1]*dt*.4;pPos[i*3+2]+=pVel[i*3+2]*dt*.3;if(pLife[i]>=1)resetP(i)}
+  gl.useProgram(partProg);
+  gl.uniformMatrix4fv(pu.MVP,false,vpMat);
+  gl.uniform1f(pu.Size,1.5);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);gl.depthMask(false);
+  gl.bindBuffer(gl.ARRAY_BUFFER,pPosBuf);gl.bufferData(gl.ARRAY_BUFFER,pPos,gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(pa.Pos);gl.vertexAttribPointer(pa.Pos,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,pLifeBuf);gl.bufferData(gl.ARRAY_BUFFER,pLife,gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(pa.Life);gl.vertexAttribPointer(pa.Life,1,gl.FLOAT,false,0,0);
+  gl.drawArrays(gl.POINTS,0,NUM_P);
+  gl.depthMask(true);gl.disable(gl.BLEND);
+
+  // ═══ PASS 2: AVA SDF → FBO (skip if GPU too slow) ═══
+  if(sdfEnabled){
+    gl.bindFramebuffer(gl.FRAMEBUFFER,avaFBO.fb);
+    gl.viewport(0,0,avaFBO.w,avaFBO.h);
+    gl.clearColor(0,0,0,0);
+    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
+    gl.useProgram(avaProg);
+    gl.uniform1f(au.Time,time);
+    gl.uniform2f(au.Res,avaFBO.w,avaFBO.h);
+    gl.uniformMatrix4fv(au.InvVP,false,invVP);
+    gl.uniform3f(au.CamPos,eyeX,eyeY,eyeZ);
+    gl.uniform3f(au.AvaPos,AVA_X,AVA_Y,AVA_Z);
+    gl.uniform1f(au.AvaYaw,avaYaw);
+    gl.uniform1f(au.Emotion,emotionCurrent);
+    gl.uniform3f(au.FirePos,FIRE_X,FIRE_Y+0.5,FIRE_Z);
+    gl.uniform1f(au.Near,NEAR);
+    gl.uniform1f(au.Far,FAR);
+    const avaPos2d = gl.getAttribLocation(avaProg, 'aPos');
+    drawQuad(avaProg, avaPos2d);
+    // Auto-detect GPU perf: if first 5 frames take >500ms total, disable SDF
+    if(frameCount < 6 && frameCount > 0){
+      sdfFrameTime += dt;
+      if(frameCount === 5 && sdfFrameTime > 0.5){ sdfEnabled = false; console.log('SDF disabled — GPU too slow (' + Math.round(sdfFrameTime*1000) + 'ms for 5 frames)'); }
+    }
+  }
+
+  // ═══ PASS 3: COMPOSITE → SCREEN ═══
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.viewport(0,0,W,H);
+  gl.clearColor(0,0,0,1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.disable(gl.DEPTH_TEST);
+  gl.useProgram(compProg);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,roomFBO.colorTex);gl.uniform1i(cu.RoomColor,0);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,roomFBO.depthTex);gl.uniform1i(cu.RoomDepth,1);
+  gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,avaFBO.colorTex);gl.uniform1i(cu.AvaColor,2);
+  gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,avaFBO.depthTex);gl.uniform1i(cu.AvaDepth,3);
+  const compPos = gl.getAttribLocation(compProg, 'aPos');
+  drawQuad(compProg, compPos);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
