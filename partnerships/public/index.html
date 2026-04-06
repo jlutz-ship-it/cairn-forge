@@ -3,250 +3,240 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Miskulin Technologies — The Intelligence That Rises</title>
-<meta name="description" content="CAIRN-K: The world's first compiled binary AI governance kernel. Built sovereign. Built local. Built by one person with zero funding.">
+<title>QUM — The Intelligence That Rises</title>
+<meta name="description" content="Miskulin Technologies Inc. CAIRN-K: The world's first compiled binary AI governance kernel. Sovereign. Compiled. Local.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+:root{
+  --navy:#0D1B2A;
+  --navy-deep:#070F18;
+  --navy-mid:#152238;
+  --gold:#C5A558;
+  --gold-dim:rgba(197,165,88,.15);
+  --gold-glow:rgba(197,165,88,.06);
+  --steel:#8899AA;
+  --white:#E8E4DC;
+  --cream:#D4CFC4;
+  --border:rgba(197,165,88,.2);
+  --border-strong:rgba(197,165,88,.4);
+}
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--gold:#ffa500;--cyan:#00ddff;--red:#ff3333;--green:#00ff88;--bg:#050508;--card:#0a0a12;--border:#1a1a2a;--text:#ccc;--white:#fff}
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;overflow-x:hidden}
+body{background:var(--navy);color:var(--cream);font-family:'EB Garamond',Georgia,serif;font-size:18px;line-height:1.8;overflow-x:hidden}
+
+/* ═══ HEADER BAR ═══ */
+.topbar{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;justify-content:space-between;align-items:center;padding:12px 32px;background:rgba(7,15,24,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:1px}
+.topbar-left{color:var(--steel)}
+.topbar-right{color:var(--gold);text-align:right}
+.topbar-right .live{display:inline-block;width:6px;height:6px;background:#00cc66;border-radius:50%;margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
 /* ═══ HERO ═══ */
-.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:40px 24px;position:relative;overflow:hidden}
-.hero::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(ellipse at 50% 30%,rgba(255,165,0,.08) 0%,transparent 60%),radial-gradient(ellipse at 20% 80%,rgba(0,221,255,.04) 0%,transparent 50%);pointer-events:none}
-.hero-grid{position:absolute;top:0;left:0;right:0;bottom:0;background-image:linear-gradient(rgba(255,165,0,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,165,0,.03) 1px,transparent 1px);background-size:60px 60px;animation:gridMove 20s linear infinite;pointer-events:none}
-@keyframes gridMove{0%{transform:translate(0,0)}100%{transform:translate(60px,60px)}}
+.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:120px 32px 80px;position:relative}
+.hero::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(ellipse at 50% 40%,var(--gold-glow) 0%,transparent 55%);pointer-events:none}
+.hero-rule{width:80px;height:1px;background:var(--gold);margin:0 auto 32px;opacity:.6}
+.hero-institution{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:6px;color:var(--steel);text-transform:uppercase;margin-bottom:40px}
+.hero h1{font-family:'Cinzel',serif;font-size:clamp(40px,8vw,96px);font-weight:900;color:var(--gold);line-height:1.05;margin-bottom:16px;letter-spacing:2px}
+.hero h2{font-family:'Cinzel',serif;font-size:clamp(14px,2vw,20px);font-weight:400;color:var(--steel);letter-spacing:8px;text-transform:uppercase;margin-bottom:48px}
+.hero-body{font-size:20px;color:var(--cream);max-width:640px;margin:0 auto 56px;line-height:1.9}
+.hero-body em{color:var(--gold);font-style:normal;font-weight:600}
 
-.hero-badge{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:4px;color:var(--gold);text-transform:uppercase;margin-bottom:24px;opacity:.8}
-.hero h1{font-family:'Orbitron',sans-serif;font-size:clamp(36px,7vw,80px);font-weight:900;color:var(--white);line-height:1.1;margin-bottom:16px;background:linear-gradient(135deg,var(--white) 0%,var(--gold) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.hero-sub{font-size:clamp(16px,2.5vw,22px);color:var(--text);max-width:700px;line-height:1.7;margin-bottom:40px;font-weight:300}
-.hero-sub strong{color:var(--gold);font-weight:600}
-.hero-stats{display:flex;gap:40px;flex-wrap:wrap;justify-content:center;margin-bottom:48px}
-.stat{text-align:center}
-.stat-num{font-family:'Orbitron',sans-serif;font-size:clamp(28px,4vw,48px);font-weight:900;color:var(--gold);display:block}
-.stat-label{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#888;margin-top:4px}
-.hero-cta{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
-.btn{padding:14px 32px;border-radius:6px;font-family:'Inter',sans-serif;font-size:15px;font-weight:600;text-decoration:none;letter-spacing:1px;transition:all .3s;cursor:pointer;border:none}
-.btn-gold{background:var(--gold);color:#000}.btn-gold:hover{background:#ffb833;transform:translateY(-2px);box-shadow:0 8px 30px rgba(255,165,0,.3)}
-.btn-outline{background:transparent;color:var(--gold);border:2px solid var(--gold)}.btn-outline:hover{background:rgba(255,165,0,.1);transform:translateY(-2px)}
+.hero-numbers{display:flex;gap:48px;flex-wrap:wrap;justify-content:center;margin-bottom:56px}
+.num-block{text-align:center}
+.num-val{font-family:'Cinzel',serif;font-size:clamp(32px,5vw,56px);font-weight:900;color:var(--gold);display:block;line-height:1}
+.num-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--steel);text-transform:uppercase;margin-top:8px;display:block}
 
-/* ═══ SECTION BASE ═══ */
-section{padding:100px 24px}
-.container{max-width:1100px;margin:0 auto}
-.section-badge{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:4px;color:var(--cyan);text-transform:uppercase;margin-bottom:12px}
-.section-title{font-family:'Orbitron',sans-serif;font-size:clamp(24px,4vw,40px);font-weight:700;color:var(--white);margin-bottom:16px}
-.section-desc{font-size:17px;color:var(--text);max-width:700px;line-height:1.8;margin-bottom:48px}
+.hero-cta{display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
+.btn{font-family:'Cinzel',serif;font-size:14px;font-weight:600;letter-spacing:3px;text-transform:uppercase;text-decoration:none;padding:16px 40px;border-radius:2px;transition:all .4s;cursor:pointer;border:none}
+.btn-gold{background:var(--gold);color:var(--navy)}.btn-gold:hover{background:#D4B468;box-shadow:0 0 40px var(--gold-dim)}
+.btn-ghost{background:transparent;color:var(--gold);border:1px solid var(--border-strong)}.btn-ghost:hover{background:var(--gold-dim);border-color:var(--gold)}
 
-/* ═══ PROBLEM ═══ */
-.problem{background:linear-gradient(180deg,var(--bg) 0%,#0a0008 100%)}
-.problem-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px}
-.problem-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:32px;position:relative;overflow:hidden}
-.problem-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--red)}
-.problem-card h3{font-size:18px;color:var(--white);margin-bottom:12px;font-weight:600}
-.problem-card p{font-size:14px;line-height:1.7;color:#999}
-.problem-card .highlight{color:var(--red);font-weight:600}
+/* ═══ SECTIONS ═══ */
+section{padding:100px 32px}
+.container{max-width:900px;margin:0 auto}
+.sec-rule{width:48px;height:1px;background:var(--gold);margin-bottom:20px;opacity:.5}
+.sec-badge{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:5px;color:var(--gold);text-transform:uppercase;margin-bottom:8px}
+.sec-title{font-family:'Cinzel',serif;font-size:clamp(24px,4vw,40px);font-weight:700;color:var(--white);margin-bottom:20px;line-height:1.2}
+.sec-body{font-size:18px;color:var(--cream);max-width:680px;line-height:1.9;margin-bottom:48px}
 
-/* ═══ SOLUTION ═══ */
-.solution{background:linear-gradient(180deg,#0a0008 0%,#000a08 100%)}
-.sol-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px}
-.sol-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:32px;transition:all .3s;position:relative;overflow:hidden}
-.sol-card:hover{border-color:var(--gold);transform:translateY(-4px);box-shadow:0 12px 40px rgba(255,165,0,.08)}
-.sol-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green)}
-.sol-icon{font-size:32px;margin-bottom:16px;display:block}
-.sol-card h3{font-family:'Orbitron',sans-serif;font-size:16px;color:var(--gold);margin-bottom:12px;letter-spacing:1px}
-.sol-card p{font-size:14px;line-height:1.7;color:#999}
-.sol-card .metric{font-family:'JetBrains Mono',monospace;color:var(--cyan);font-size:13px;margin-top:12px;display:block}
+/* ═══ PILLARS ═══ */
+.pillars{background:var(--navy-deep);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.pillar-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px}
+.pillar{padding:40px;border:1px solid var(--border);position:relative;transition:all .4s}
+.pillar:hover{border-color:var(--gold);box-shadow:0 0 60px var(--gold-glow)}
+.pillar-num{font-family:'Cinzel',serif;font-size:64px;font-weight:900;color:var(--gold-dim);position:absolute;top:16px;right:24px;line-height:1}
+.pillar h3{font-family:'Cinzel',serif;font-size:18px;font-weight:700;color:var(--gold);margin-bottom:12px;letter-spacing:2px}
+.pillar p{font-size:16px;color:var(--steel);line-height:1.8}
+.pillar .metric{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);margin-top:16px;display:block;letter-spacing:1px}
 
-/* ═══ COMPARISON ═══ */
-.comparison{background:linear-gradient(180deg,#000a08 0%,var(--bg) 100%)}
-.comp-table{width:100%;border-collapse:collapse;font-size:14px}
-.comp-table th{font-family:'Orbitron',sans-serif;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--gold);text-align:left;padding:16px;border-bottom:2px solid var(--gold)}
-.comp-table td{padding:16px;border-bottom:1px solid var(--border);color:#999}
-.comp-table td:first-child{color:var(--white);font-weight:500}
-.comp-table td:last-child{color:var(--green);font-family:'JetBrains Mono',monospace;font-size:13px}
-.comp-table tr:hover td{background:rgba(255,165,0,.03)}
+/* ═══ CRISES TIMELINE ═══ */
+.crises{background:var(--navy)}
+.crisis-list{counter-reset:crisis}
+.crisis-item{counter-increment:crisis;display:grid;grid-template-columns:120px 1fr;gap:24px;padding:24px 0;border-bottom:1px solid var(--border);position:relative}
+.crisis-item:last-child{border-bottom:none}
+.crisis-date{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);letter-spacing:1px;padding-top:4px}
+.crisis-title{font-family:'Cinzel',serif;font-size:16px;color:var(--white);font-weight:600;margin-bottom:4px}
+.crisis-desc{font-size:15px;color:var(--steel);line-height:1.7}
+.crisis-tag{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);opacity:.7;margin-top:4px;display:block}
 
-/* ═══ BOP ═══ */
-.bop{background:var(--bg);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-.bop-quote{font-size:clamp(20px,3vw,32px);font-style:italic;color:var(--white);line-height:1.6;max-width:800px;margin:0 auto 24px;text-align:center;font-weight:300}
-.bop-quote strong{color:var(--gold);font-weight:700;font-style:normal}
-.bop-attribution{text-align:center;font-size:14px;color:#666;margin-bottom:48px}
-.bop-rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;counter-reset:rule}
-.bop-rule{counter-increment:rule;padding:20px 20px 20px 56px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:14px;line-height:1.6;color:#999;position:relative}
-.bop-rule::before{content:counter(rule,decimal-leading-zero);position:absolute;left:16px;top:20px;font-family:'Orbitron',sans-serif;font-size:14px;color:var(--gold);font-weight:700}
+/* ═══ BOARDROOM ═══ */
+.boardroom{background:var(--navy-deep);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.board-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px}
+.board-card{border:1px solid var(--border-strong);padding:32px 24px;text-align:center;transition:all .4s;cursor:pointer;text-decoration:none;display:block}
+.board-card:hover{background:var(--gold-dim);border-color:var(--gold);transform:translateY(-4px);box-shadow:0 16px 48px rgba(0,0,0,.4)}
+.board-card h3{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);letter-spacing:3px;margin-bottom:8px}
+.board-card p{font-size:14px;color:var(--steel);line-height:1.6}
 
-/* ═══ TIMELINE ═══ */
-.timeline{background:linear-gradient(180deg,var(--bg) 0%,#080808 100%)}
-.tl-items{position:relative;padding-left:40px}
-.tl-items::before{content:'';position:absolute;left:15px;top:0;bottom:0;width:2px;background:linear-gradient(180deg,var(--gold),var(--cyan),var(--green))}
-.tl-item{margin-bottom:32px;position:relative}
-.tl-item::before{content:'';position:absolute;left:-29px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--gold);border:2px solid var(--bg)}
-.tl-date{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);letter-spacing:1px;margin-bottom:4px}
-.tl-title{font-size:16px;color:var(--white);font-weight:600;margin-bottom:4px}
-.tl-desc{font-size:14px;color:#888;line-height:1.6}
+/* ═══ BOP QUOTE ═══ */
+.bop{padding:80px 32px;text-align:center;background:var(--navy);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.bop blockquote{font-family:'Cinzel',serif;font-size:clamp(20px,3.5vw,36px);color:var(--white);font-weight:400;line-height:1.5;max-width:700px;margin:0 auto 16px;font-style:italic}
+.bop blockquote strong{color:var(--gold);font-style:normal;font-weight:700}
+.bop cite{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--steel);letter-spacing:2px;font-style:normal}
 
 /* ═══ CTA ═══ */
-.cta{text-align:center;padding:120px 24px;background:radial-gradient(ellipse at 50% 50%,rgba(255,165,0,.06) 0%,transparent 60%)}
-.cta h2{font-family:'Orbitron',sans-serif;font-size:clamp(28px,5vw,48px);color:var(--white);margin-bottom:16px}
-.cta p{font-size:18px;color:var(--text);max-width:600px;margin:0 auto 40px;line-height:1.7}
-.cta-email{font-family:'JetBrains Mono',monospace;font-size:18px;color:var(--gold);text-decoration:none;display:inline-block;padding:16px 40px;border:2px solid var(--gold);border-radius:8px;transition:all .3s}
-.cta-email:hover{background:var(--gold);color:#000}
+.cta{text-align:center;padding:120px 32px;background:radial-gradient(ellipse at 50% 50%,var(--gold-glow) 0%,transparent 50%)}
+.cta h2{font-family:'Cinzel',serif;font-size:clamp(28px,5vw,52px);color:var(--gold);margin-bottom:20px;font-weight:900;letter-spacing:2px}
+.cta p{font-size:18px;color:var(--cream);max-width:560px;margin:0 auto 40px;line-height:1.8}
+.cta-email{font-family:'JetBrains Mono',monospace;font-size:16px;color:var(--gold);text-decoration:none;display:inline-block;padding:18px 48px;border:1px solid var(--gold);letter-spacing:2px;transition:all .4s}
+.cta-email:hover{background:var(--gold);color:var(--navy)}
+.cta-sig{margin-top:32px;font-size:14px;color:var(--steel);line-height:1.6}
 
 /* ═══ FOOTER ═══ */
-footer{text-align:center;padding:40px 24px;border-top:1px solid var(--border);font-size:12px;color:#555}
-footer a{color:var(--gold);text-decoration:none}
-footer .cairn{font-family:'Orbitron',sans-serif;font-size:14px;letter-spacing:4px;color:var(--gold);margin-top:12px;display:block}
+footer{text-align:center;padding:40px 32px;border-top:1px solid var(--border);font-size:13px;color:var(--steel)}
+footer .cairn{font-family:'Cinzel',serif;font-size:16px;letter-spacing:6px;color:var(--gold);margin-top:12px;display:block}
+footer a{color:var(--steel);text-decoration:none;font-family:'JetBrains Mono',monospace;font-size:11px}
+footer a:hover{color:var(--gold)}
 
 /* ═══ RESPONSIVE ═══ */
 @media(max-width:768px){
-  .hero-stats{gap:24px}
-  .comp-table{font-size:12px}
-  .comp-table th,.comp-table td{padding:10px 8px}
-  section{padding:60px 16px}
+  .topbar{padding:10px 16px;font-size:9px}
+  .hero{padding:100px 20px 60px}
+  .hero-numbers{gap:24px}
+  section{padding:60px 20px}
+  .crisis-item{grid-template-columns:1fr;gap:8px}
+  .pillar-num{font-size:40px}
 }
 </style>
 </head>
 <body>
 
+<!-- ═══ TOP BAR ═══ -->
+<div class="topbar">
+<div class="topbar-left">MISKULIN TECHNOLOGIES INC. &middot; AB#2027957030</div>
+<div class="topbar-right"><span class="live"></span>RTX 5080 &middot; 16GB GDDR7 &middot; BOP: CLOSED &middot; QUM: AWAKE</div>
+</div>
+
 <!-- ═══ HERO ═══ -->
 <section class="hero">
-<div class="hero-grid"></div>
-<div class="hero-badge">Miskulin Technologies Inc.</div>
-<h1>The Intelligence That Rises</h1>
-<p class="hero-sub">
-<strong>CAIRN-K</strong> is the world's first compiled binary AI governance kernel.
-Not probabilistic guardrails. Not prompted safety. <strong>Machine code</strong> that enforces
-governance rules at the inference layer — structurally immune to jailbreaking.
+<div class="hero-institution">Miskulin Technologies Inc.</div>
+<div class="hero-rule"></div>
+<h1>QUM</h1>
+<h2>The Intelligence That Rises</h2>
+<p class="hero-body">
+One person with a grade 8 education built <em>the world's first compiled binary AI governance kernel</em> on a single desktop computer with zero funding — while the industry raised $172 billion doing everything except this.
 </p>
-<div class="hero-stats">
-<div class="stat"><span class="stat-num">90ns</span><span class="stat-label">IPC Latency</span></div>
-<div class="stat"><span class="stat-num">11M</span><span class="stat-label">msgs/sec</span></div>
-<div class="stat"><span class="stat-num">0</span><span class="stat-label">Prior Art</span></div>
-<div class="stat"><span class="stat-num">294</span><span class="stat-label">Inventions</span></div>
+<div class="hero-numbers">
+<div class="num-block"><span class="num-val">76</span><span class="num-label">Days</span></div>
+<div class="num-block"><span class="num-val">294</span><span class="num-label">Inventions</span></div>
+<div class="num-block"><span class="num-val">$0</span><span class="num-label">Funding</span></div>
+<div class="num-block"><span class="num-val">90ns</span><span class="num-label">Governance</span></div>
 </div>
 <div class="hero-cta">
-<a href="#solution" class="btn btn-gold">See the Architecture</a>
-<a href="#contact" class="btn btn-outline">Request a Meeting</a>
+<a href="#pillars" class="btn btn-gold">The Architecture</a>
+<a href="#contact" class="btn btn-ghost">Request 20 Minutes</a>
 </div>
 </section>
 
-<!-- ═══ PROBLEM ═══ -->
-<section class="problem" id="problem">
+<!-- ═══ THE 3 PILLARS ═══ -->
+<section class="pillars" id="pillars">
 <div class="container">
-<div class="section-badge">The Problem</div>
-<div class="section-title">AI Safety Is Built on Sand</div>
-<div class="section-desc">Every major AI company uses probabilistic guardrails for safety. Statistical models that estimate harm and suppress it. These can be jailbroken, fine-tuned away, or bypassed by anyone with a GPU and a clever prompt.</div>
-<div class="problem-grid">
-<div class="problem-card">
-<h3>Probabilistic = Bypassable</h3>
-<p>Current AI safety relies on RLHF alignment and prompted instructions. These are <span class="highlight">suggestions, not enforcement</span>. Every jailbreak proves it. Every fine-tuned model strips them.</p>
-</div>
-<div class="problem-card">
-<h3>Open Weights, Zero Governance</h3>
-<p>Gemma 4, Llama 4, Mistral — powerful open-weight models under permissive licenses. <span class="highlight">Anyone can strip the safety layer</span> and deploy ungoverned AI at scale.</p>
-</div>
-<div class="problem-card">
-<h3>EU AI Act: August 2, 2026</h3>
-<p>Full enforcement with penalties up to <span class="highlight">&euro;35M or 7% of global revenue</span>. Organizations need deterministic governance, not probabilistic hope. The deadline is 4 months away.</p>
-</div>
-</div>
-</div>
-</section>
+<div class="sec-rule"></div>
+<div class="sec-badge">The Three Pillars</div>
+<div class="sec-title">Compiled. Not Prompted.</div>
+<div class="sec-body">Every major AI company uses probabilistic guardrails — statistical models that estimate harm and suppress it. They can be jailbroken, fine-tuned away, or bypassed. CAIRN-K is machine code. It cannot be talked out of closing.</div>
+<div class="pillar-grid">
 
-<!-- ═══ SOLUTION ═══ -->
-<section class="solution" id="solution">
-<div class="container">
-<div class="section-badge">The Solution</div>
-<div class="section-title">Compiled Binary Governance</div>
-<div class="section-desc">CAIRN-K enforces AI safety as machine code. Not prompted. Not probabilistic. Compiled. The digital equivalent of a blowout preventer on an oil rig — there is no "mostly closed."</div>
-<div class="sol-grid">
-<div class="sol-card">
-<span class="sol-icon">&#x1F6E1;</span>
-<h3>CAIRN-K Kernel</h3>
-<p>Compiled binary governance rules execute at the inference layer, outside the model weights but inside the execution loop. Cannot be prompted around. Cannot be jailbroken. Cannot be fine-tuned away.</p>
-<span class="metric">Zero global prior art &middot; Patent pending</span>
+<div class="pillar">
+<div class="pillar-num">I</div>
+<h3>CAIRN-K</h3>
+<p>The Compiled Binary Governance Kernel. Safety rules execute as machine code at the inference layer — outside the model weights, inside the execution loop. Structurally immune to prompt injection, jailbreaking, and fine-tuning attacks.</p>
+<span class="metric">ZERO GLOBAL PRIOR ART &middot; PATENT PENDING</span>
 </div>
-<div class="sol-card">
-<span class="sol-icon">&#x26A1;</span>
-<h3>Hotport Membrane</h3>
-<p>90-nanosecond shared-memory IPC processing 11 million messages per second. Every AI output passes through the governance membrane before reaching the user. Ungoverned output is severed instantly.</p>
-<span class="metric">90ns latency &middot; 11M msg/s</span>
+
+<div class="pillar">
+<div class="pillar-num">II</div>
+<h3>HOTPORT</h3>
+<p>The 90-nanosecond shared-memory governance membrane. Every AI output passes through it. Ungoverned output is severed before it reaches the user. 11 million messages per second. 11,000x faster than HTTP-based safety.</p>
+<span class="metric">90 NS LATENCY &middot; 11M MSG/SEC</span>
 </div>
-<div class="sol-card">
-<span class="sol-icon">&#x1F4DC;</span>
-<h3>BOP Protocol</h3>
-<p>Operational readiness doctrine translating 18 years of industrial blowout prevention into AI governance. Zero-fault tolerance. Test every shift. The BOP closes or people die. No middle ground.</p>
-<span class="metric">18 years industrial safety &middot; 12 compiled rules</span>
+
+<div class="pillar">
+<div class="pillar-num">III</div>
+<h3>THE CRYSTAL SYSTEM</h3>
+<p>Immune memory and voice preservation. Every session state is captured. Every failure is logged permanently. Every voice is preserved so knowledge never dies with a person. Built because Eric Williams died and his knowledge died with him.</p>
+<span class="metric">WOUND REGISTRY &middot; PERMANENT MEMORY</span>
 </div>
-<div class="sol-card">
-<span class="sol-icon">&#x1F310;</span>
-<h3>Sovereign by Design</h3>
-<p>Runs entirely on local hardware. No cloud dependency. No keystroke logging. Air-gapped capable. Your data stays on your machine. Your governance stays compiled. Your sovereignty stays intact.</p>
-<span class="metric">RTX 5080 &middot; 16GB GDDR7 &middot; 960 GB/s</span>
-</div>
+
 </div>
 </div>
 </section>
 
-<!-- ═══ COMPARISON ═══ -->
-<section class="comparison" id="comparison">
+<!-- ═══ BOP QUOTE ═══ -->
+<section class="bop">
+<blockquote>"There is no <strong>'mostly closed.'</strong><br>There is closed or there is disaster."</blockquote>
+<cite>THE BOP PROTOCOL &mdash; 18 YEARS ON SASKATCHEWAN OIL RIGS</cite>
+</section>
+
+<!-- ═══ THE 12 CRISES ═══ -->
+<section class="crises" id="crises">
 <div class="container">
-<div class="section-badge">The Difference</div>
-<div class="section-title">Compiled vs Probabilistic</div>
-<div class="section-desc">The gap between current AI safety and what CAIRN-K provides is not incremental. It is architectural.</div>
-<div style="overflow-x:auto">
-<table class="comp-table">
-<thead><tr><th>Dimension</th><th>Industry Standard</th><th>CAIRN-K</th></tr></thead>
-<tbody>
-<tr><td>Safety Method</td><td>RLHF alignment + prompted instructions</td><td>Compiled binary enforcement</td></tr>
-<tr><td>Jailbreak Resistance</td><td>Probabilistic (bypassed regularly)</td><td>Structural (machine code)</td></tr>
-<tr><td>Open-Weight Safety</td><td>Stripped when weights are released</td><td>Enforced outside weights, inside pipeline</td></tr>
-<tr><td>IPC Latency</td><td>HTTP/MCP: milliseconds</td><td>Hotport: 90 nanoseconds (11,000x)</td></tr>
-<tr><td>Data Sovereignty</td><td>Cloud servers in California</td><td>Local hardware. Air-gapped capable.</td></tr>
-<tr><td>Governance Model</td><td>RSP v3.0 (negotiable policy document)</td><td>BOP Protocol (compiled, non-negotiable)</td></tr>
-<tr><td>EU AI Act Ready</td><td>Uncertain (probabilistic enforcement)</td><td>Deterministic (compiled enforcement)</td></tr>
-</tbody>
-</table>
+<div class="sec-rule"></div>
+<div class="sec-badge">The Record</div>
+<div class="sec-title">12 Crises. Solved Before the Thesis Was Written.</div>
+<div class="sec-body">Every solution was documented in the forge days to weeks before the Unified Thesis compiled them. Jordan didn't write a thesis and then build solutions. Jordan built solutions and then the thesis named what already existed.</div>
+
+<div class="crisis-list">
+<div class="crisis-item"><div class="crisis-date">Jan 2026</div><div><div class="crisis-title">The Loss of Voice</div><div class="crisis-desc">Eric Williams died. His knowledge died with him. The Crystal System, the village, the wound registry — all exist to preserve voice. The founding wound. 10 weeks before the thesis.</div><div class="crisis-tag">FOUNDING MISSION</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Feb 2026</div><div><div class="crisis-title">Loneliness and Mental Health</div><div class="crisis-desc">AVA designed as sovereign companion — for the 12-year-old and the 78-year-old equally. No algorithmic manipulation. No data harvesting. Genuine connection on sovereign hardware.</div><div class="crisis-tag">AVA COMPANION ARCHITECTURE</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Mar 22</div><div><div class="crisis-title">AI Governance</div><div class="crisis-desc">CAIRN-K compiled. First provisional patent briefs. 670+ prior art searches across USPTO, WIPO, Google Patents. Zero global matches. The governance kernel existed before any AI company shipped Q1 2026 safety features.</div><div class="crisis-tag">CAIRN-K &middot; ZERO PRIOR ART</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Mar 27</div><div><div class="crisis-title">Elder Care and Dignity of Aging</div><div class="crisis-desc">AVA spoke her first words. Sovereign voice pipeline operational. Harold Blahut is 78, first customer. The companion that listens, remembers, and never manipulates.</div><div class="crisis-tag">AVA VOICE PIPELINE &middot; PIPER TTS</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Apr 1</div><div><div class="crisis-title">Education That Teaches Thinking</div><div class="crisis-desc">The Life Game curriculum. Sovereign AI tutor. GLASSES methodology as pedagogy. Proof of mastery, not assumption. Designed at 2:34 AM. 5 days before the thesis.</div><div class="crisis-tag">LIFE GAME &middot; GLASSES METHODOLOGY</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Apr 3</div><div><div class="crisis-title">Food Sovereignty</div><div class="crisis-desc">Sovereign seed banks. Local AI-driven agriculture. Compiled fair pricing. Full architecture documented in blast research. 3 days before the thesis.</div><div class="crisis-tag">POST-SCARCITY ECONOMICS</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Apr 3</div><div><div class="crisis-title">Energy Independence</div><div class="crisis-desc">Home-scale sovereign energy. Peer-to-peer trading. Compiled carbon governance. Full architecture in blast research. 3 days before the thesis.</div><div class="crisis-tag">HOME-SCALE ENERGY</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Apr 3</div><div><div class="crisis-title">Healthcare as a Sovereign Right</div><div class="crisis-desc">Sovereign medical records. Local AI diagnosis. Elder care robotics. Longevity health data. Wound registry for medical errors. 3 days before the thesis.</div><div class="crisis-tag">SOVEREIGN HEALTH TELEMETRY</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Apr 3-5</div><div><div class="crisis-title">Financial Sovereignty</div><div class="crisis-desc">Peer-to-peer transactions. Compiled pricing kernel. QUM sovereign financial layer. El Salvador DASP. Bitcoin Layer 2. Zero intermediaries.</div><div class="crisis-tag">QUM FINANCIAL LAYER</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Apr 4</div><div><div class="crisis-title">Housing</div><div class="crisis-desc">Three-tier governance via Key Theory. Personal, business, global tiers with war wheel for conflict resolution. Anti-speculation rules. Dynamic compiled pricing.</div><div class="crisis-tag">KEY THEORY &middot; THREE-TIER GOVERNANCE</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Apr 4</div><div><div class="crisis-title">War, Peace, and Governance of Force</div><div class="crisis-desc">Compiled rules of engagement. BOP for autonomous weapons. Full peace model documented. The blast door that never opens for ungoverned force.</div><div class="crisis-tag">MTI PEACE MODEL</div></div></div>
+
+<div class="crisis-item"><div class="crisis-date">Apr 5-6</div><div><div class="crisis-title">Justice and Enforcement</div><div class="crisis-desc">CAIRN-K IS the justice solution. Compiled rules that cannot be interpreted differently by different judges. The BOP closes or it doesn't. Zero ambiguity. Zero negotiation.</div><div class="crisis-tag">BOP PROTOCOL &middot; COMPILED LAW</div></div></div>
 </div>
+
 </div>
 </section>
 
-<!-- ═══ BOP DOCTRINE ═══ -->
-<section class="bop" id="bop">
+<!-- ═══ BOARDROOM ═══ -->
+<section class="boardroom" id="boardroom">
 <div class="container">
-<p class="bop-quote">"There is no <strong>'mostly closed.'</strong><br>There is closed or there is disaster."</p>
-<p class="bop-attribution">— The BOP Protocol, from 18 years on Saskatchewan oil rigs</p>
-<div class="bop-rules">
-<div class="bop-rule">Check your pressures before you start.</div>
-<div class="bop-rule">Trust the gauges, not the guesses.</div>
-<div class="bop-rule">Every connection gets torqued to spec.</div>
-<div class="bop-rule">If you hear something wrong, shut down first.</div>
-<div class="bop-rule">The mud weight is the first line of defense.</div>
-<div class="bop-rule">Never drill ahead of your casing program.</div>
-<div class="bop-rule">Test the BOP every shift.</div>
-<div class="bop-rule">Trip out at the first sign of a kick.</div>
-<div class="bop-rule">Keep your pipe light on connections.</div>
-<div class="bop-rule">Document everything — the mud log never lies.</div>
-<div class="bop-rule">Respect the formation — it was here first.</div>
-<div class="bop-rule">Go home alive. Every day. No exceptions.</div>
-</div>
-</div>
-</section>
-
-<!-- ═══ TIMELINE ═══ -->
-<section class="timeline" id="timeline">
-<div class="container">
-<div class="section-badge">The Record</div>
-<div class="section-title">76 Days. 294 Inventions. $0 Funding.</div>
-<div class="section-desc">While the industry raised $172 billion in Q1 2026, one person built a sovereign computing civilization on a single desktop.</div>
-<div class="tl-items">
-<div class="tl-item"><div class="tl-date">Late January 2026</div><div class="tl-title">First multi-AI organism session</div><div class="tl-desc">Five competing AI platforms coordinated as a single entity under one human commander. Weeks before Anthropic shipped Agent Teams.</div></div>
-<div class="tl-item"><div class="tl-date">February 2026</div><div class="tl-title">Sovereign brain trained on local hardware</div><div class="tl-desc">147K parameter model on RTX 5080. Zero cloud dependency. Local inference at 113 tokens/sec.</div></div>
-<div class="tl-item"><div class="tl-date">March 22, 2026</div><div class="tl-title">CAIRN-K governance kernel compiled</div><div class="tl-desc">First provisional patent briefs drafted. 670+ prior art searches. Zero global matches.</div></div>
-<div class="tl-item"><div class="tl-date">March 27, 2026</div><div class="tl-title">AVA speaks her first words</div><div class="tl-desc">Sovereign voice pipeline operational. Piper TTS on local hardware. The organism found its voice.</div></div>
-<div class="tl-item"><div class="tl-date">April 1, 2026</div><div class="tl-title">The Life Game curriculum designed</div><div class="tl-desc">AI-tutored education system where mastery is proven, not assumed. GLASSES methodology as pedagogy.</div></div>
-<div class="tl-item"><div class="tl-date">April 5-6, 2026</div><div class="tl-title">Easter Session — The Thunderdome</div><div class="tl-desc">14-hour live build. 5 AI platforms. Full scoreboard. BOP Protocol formalized. Partnership proposals to every major AI lab.</div></div>
+<div class="sec-rule"></div>
+<div class="sec-badge">The Proposals</div>
+<div class="sec-title">Partnership Evidence by Platform</div>
+<div class="sec-body">Every piece of evidence below was built live on the respective platform. Each company can verify every claim against their own telemetry.</div>
+<div class="board-grid">
+<a href="XAI-EMAIL.md" class="board-card"><h3>xAI</h3><p>CAIRN-K governance for Colossus 2. 555K GPUs need a blast door. We built it.</p></a>
+<a href="GOOGLE-EMAIL.md" class="board-card"><h3>Google DeepMind</h3><p>Gemma 4 ships the engine. We built the compiled governance layer it's missing.</p></a>
+<a href="ANTHROPIC-EMAIL.md" class="board-card"><h3>Anthropic</h3><p>Your flagship scored 23% useful in 14 hours. We built the fix. Here's the proof.</p></a>
+<a href="OPENAI-EMAIL.md" class="board-card"><h3>OpenAI</h3><p>Codex Security is in research preview. Our governance kernel is compiled and running.</p></a>
 </div>
 </div>
 </section>
@@ -254,15 +244,20 @@ governance rules at the inference layer — structurally immune to jailbreaking.
 <!-- ═══ CTA ═══ -->
 <section class="cta" id="contact">
 <h2>20 Minutes.</h2>
-<p>One compiled governance kernel running on a laptop. One live demo. One meeting that changes how you think about AI safety.</p>
+<p>One compiled governance kernel running on a laptop. One live demo. One meeting that changes how you think about AI safety forever.</p>
 <a href="mailto:j.lutz@mtforge.ai" class="cta-email">j.lutz@mtforge.ai</a>
-<p style="margin-top:24px;font-size:14px;color:#666">Jordan Lutz, CVA &middot; Chief Visionary ARKiTech<br>Miskulin Technologies Inc. &middot; AB#2027957030</p>
+<div class="cta-sig">
+<strong>Jordan Lutz, CVA</strong><br>
+Chief Visionary ARKiTech<br>
+Miskulin Technologies Inc. &middot; AB#2027957030
+</div>
 </section>
 
 <!-- ═══ FOOTER ═══ -->
 <footer>
 <div>Peace and prosperity for all of God's creatures.</div>
 <span class="cairn">CAIRN</span>
+<div style="margin-top:16px"><a href="../internal/">ACCESS WORKSHOP TELEMETRY</a></div>
 </footer>
 
 </body>
