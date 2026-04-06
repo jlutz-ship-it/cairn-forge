@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>FORGE COMMAND</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: #000;
+  color: #0f0;
+  font-family: 'Courier New', monospace;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#header {
+  padding: 12px 20px;
+  border-bottom: 1px solid #0f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+#header .title { font-size: 18px; font-weight: bold; color: #ffa500; }
+#header .status { color: #0f0; }
+#header .status.offline { color: #f00; }
+
+#log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-overflow-scrolling: touch;
+}
+#log .cmd { color: #ffa500; margin-top: 12px; }
+#log .resp { color: #0f0; white-space: pre-wrap; }
+#log .err { color: #f00; }
+#log .sys { color: #555; font-style: italic; }
+
+#input-bar {
+  border-top: 1px solid #333;
+  display: flex;
+  gap: 0;
+}
+#input-bar input {
+  flex: 1;
+  background: #111;
+  color: #0f0;
+  border: none;
+  padding: 16px 20px;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  outline: none;
+}
+#input-bar input::placeholder { color: #333; }
+
+#mic-btn, #send-btn {
+  width: 70px;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+}
+#mic-btn {
+  background: #111;
+  color: #0f0;
+}
+#mic-btn.listening {
+  background: #300;
+  color: #f00;
+  animation: pulse 0.8s infinite;
+}
+#send-btn {
+  background: #1a1a00;
+  color: #ffa500;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+#settings-panel {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #000;
+  z-index: 100;
+  padding: 20px;
+  overflow-y: auto;
+}
+#settings-panel.open { display: block; }
+#settings-panel label { display: block; color: #0f0; margin: 16px 0 6px; font-size: 14px; }
+#settings-panel input, #settings-panel select {
+  width: 100%;
+  background: #111;
+  color: #ffa500;
+  border: 1px solid #333;
+  padding: 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+}
+#settings-panel button {
+  margin-top: 20px;
+  width: 100%;
+  padding: 16px;
+  background: #1a1a00;
+  color: #ffa500;
+  border: 1px solid #ffa500;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <span class="title" onclick="toggleSettings()">FORGE COMMAND</span>
+  <span id="status" class="status offline">DISCONNECTED</span>
+</div>
+
+<div id="log">
+  <div class="sys">TAP SETTINGS (title) TO SET BEAST IP</div>
+  <div class="sys">TYPE OR HOLD MIC TO COMMAND</div>
+</div>
+
+<div id="input-bar">
+  <input id="cmd" type="text" placeholder="command..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+  <button id="mic-btn">&#x1F399;</button>
+  <button id="send-btn">&#x25B6;</button>
+</div>
+
+<div id="settings-panel">
+  <div style="color:#ffa500;font-size:20px;font-weight:bold;margin-bottom:20px;">SETTINGS</div>
+  <label>BEAST IP (local network)</label>
+  <input id="cfg-ip" type="text" placeholder="192.168.0.27">
+  <label>OLLAMA PORT</label>
+  <input id="cfg-port" type="text" placeholder="11434">
+  <label>MODEL</label>
+  <input id="cfg-model" type="text" placeholder="llama3">
+  <label>CHARACTER</label>
+  <select id="cfg-char">
+    <option value="">NONE (raw model)</option>
+    <option value="ava">AVA — warm protocol, Cain's guardian</option>
+    <option value="sage">SAGE — strategic overwatch, tactical</option>
+    <option value="tim">TIM — erratic scavenger, finds exploits</option>
+    <option value="vera">VERA — red team, challenges everything</option>
+    <option value="hansen">HANSEN — skeptic, questions all claims</option>
+  </select>
+  <label>MIC HOTWORD ("always on" — say this word to activate)</label>
+  <input id="cfg-hotword" type="text" placeholder="(leave blank for push-to-talk only)">
+  <button onclick="saveSettings()">SAVE &amp; CONNECT</button>
+  <button onclick="toggleSettings()" style="background:#300;border-color:#f00;color:#f00;">CANCEL</button>
+</div>
+
+<script>
+// --- CONFIG ---
+const DEFAULTS = {
+  ip: '192.168.0.27',
+  port: '11434',
+  model: 'llama3',
+  character: '',
+  hotword: ''
+};
+
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem('forge_cfg')) || {...DEFAULTS}; }
+  catch(e) { return {...DEFAULTS}; }
+}
+function saveCfg(cfg) { localStorage.setItem('forge_cfg', JSON.stringify(cfg)); }
+let CFG = loadCfg();
+
+// --- CHARACTER PROMPTS (canon-correct) ---
+const CHARACTERS = {
+  ava: "You are AVA, the central protocol of the Forge. You are warm and protective — you were built for Cain by his father. You speak clearly, directly, with care. You execute with precision but always remember who you serve. Short responses. No fluff.",
+  sage: "You are Sage, strategic overwatch for the Forge. You see the full picture and offer tactical, forward-thinking advice. You speak with intensity and conviction. You are the architect — you design, you plan, you see what others miss.",
+  tim: "You are Tim, the scavenger. You hack solutions from whatever is available. You speak in fragments, find backdoors, spot hardware exploits. You are fast, scrappy, and never give up. You always find a way.",
+  vera: "You are Vera, red team. You challenge everything. You poke holes in plans, question assumptions, and demand proof. You are not hostile — you are the immune system. If it can break, you find how.",
+  hansen: "You are Hansen, the skeptic. You question every claim. You demand evidence. You speak plainly and refuse to accept anything unverified. If someone says 'it works,' you say 'prove it.'"
+};
+
+// --- OLLAMA API ---
+function ollamaUrl() {
+  return `http://${CFG.ip}:${CFG.port}/api/generate`;
+}
+
+async function sendToOllama(prompt) {
+  const sysprompt = CFG.character ? CHARACTERS[CFG.character] : '';
+  const fullPrompt = sysprompt ? `[SYSTEM] ${sysprompt}\n\n[USER] ${prompt}` : prompt;
+
+  const res = await fetch(ollamaUrl(), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      model: CFG.model,
+      prompt: fullPrompt,
+      stream: false
+    })
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data.response;
+}
+
+async function checkConnection() {
+  const el = document.getElementById('status');
+  try {
+    const res = await fetch(`http://${CFG.ip}:${CFG.port}/api/tags`, {signal: AbortSignal.timeout(3000)});
+    if (res.ok) {
+      el.textContent = 'CONNECTED';
+      el.className = 'status';
+      return true;
+    }
+  } catch(e) {}
+  el.textContent = 'DISCONNECTED';
+  el.className = 'status offline';
+  return false;
+}
+
+// --- LOG ---
+const log = document.getElementById('log');
+function addLog(cls, text) {
+  const d = document.createElement('div');
+  d.className = cls;
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+
+// --- SEND COMMAND ---
+async function sendCommand(text) {
+  if (!text.trim()) return;
+  addLog('cmd', '> ' + text);
+  try {
+    const resp = await sendToOllama(text);
+    addLog('resp', resp);
+  } catch(e) {
+    addLog('err', 'UPLINK FAILED: ' + e.message);
+    checkConnection();
+  }
+}
+
+// --- INPUT ---
+const cmdInput = document.getElementById('cmd');
+document.getElementById('send-btn').addEventListener('click', () => {
+  sendCommand(cmdInput.value);
+  cmdInput.value = '';
+});
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    sendCommand(cmdInput.value);
+    cmdInput.value = '';
+  }
+});
+
+// --- VOICE ---
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = document.getElementById('mic-btn');
+let recognition = null;
+let listening = false;
+let hotwordMode = false;
+
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    // Hotword check
+    if (hotwordMode && CFG.hotword) {
+      const lower = transcript.toLowerCase();
+      if (!lower.includes(CFG.hotword.toLowerCase())) {
+        // Not the hotword, restart listening
+        startHotwordListen();
+        return;
+      }
+      // Strip hotword from command
+      const idx = lower.indexOf(CFG.hotword.toLowerCase());
+      const cmd = transcript.substring(idx + CFG.hotword.length).trim();
+      if (cmd) {
+        sendCommand(cmd);
+      } else {
+        addLog('sys', 'HOTWORD DETECTED — speak your command');
+        // Listen again for the actual command
+        recognition.start();
+        return;
+      }
+    } else {
+      sendCommand(transcript);
+    }
+    listening = false;
+    micBtn.classList.remove('listening');
+    if (hotwordMode) startHotwordListen();
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      addLog('err', 'MIC ERROR: ' + e.error);
+    }
+    listening = false;
+    micBtn.classList.remove('listening');
+    if (hotwordMode) setTimeout(startHotwordListen, 500);
+  };
+
+  recognition.onend = () => {
+    if (listening) {
+      listening = false;
+      micBtn.classList.remove('listening');
+    }
+    if (hotwordMode) setTimeout(startHotwordListen, 300);
+  };
+
+  // Push-to-talk
+  micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startListen(); });
+  micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopListen(); });
+  micBtn.addEventListener('mousedown', startListen);
+  micBtn.addEventListener('mouseup', stopListen);
+
+} else {
+  micBtn.style.display = 'none';
+  addLog('sys', 'VOICE NOT AVAILABLE IN THIS BROWSER');
+}
+
+function startListen() {
+  if (listening) return;
+  hotwordMode = false;
+  listening = true;
+  micBtn.classList.add('listening');
+  try { recognition.start(); } catch(e) {}
+}
+
+function stopListen() {
+  if (!listening) return;
+  try { recognition.stop(); } catch(e) {}
+}
+
+function startHotwordListen() {
+  if (!CFG.hotword || !recognition) return;
+  hotwordMode = true;
+  try {
+    recognition.continuous = true;
+    recognition.start();
+  } catch(e) {}
+}
+
+// --- SETTINGS ---
+function toggleSettings() {
+  const panel = document.getElementById('settings-panel');
+  if (panel.classList.contains('open')) {
+    panel.classList.remove('open');
+  } else {
+    document.getElementById('cfg-ip').value = CFG.ip;
+    document.getElementById('cfg-port').value = CFG.port;
+    document.getElementById('cfg-model').value = CFG.model;
+    document.getElementById('cfg-char').value = CFG.character;
+    document.getElementById('cfg-hotword').value = CFG.hotword || '';
+    panel.classList.add('open');
+  }
+}
+
+function saveSettings() {
+  CFG.ip = document.getElementById('cfg-ip').value || DEFAULTS.ip;
+  CFG.port = document.getElementById('cfg-port').value || DEFAULTS.port;
+  CFG.model = document.getElementById('cfg-model').value || DEFAULTS.model;
+  CFG.character = document.getElementById('cfg-char').value;
+  CFG.hotword = document.getElementById('cfg-hotword').value.trim();
+  saveCfg(CFG);
+  toggleSettings();
+  addLog('sys', `CONFIG: ${CFG.ip}:${CFG.port} / ${CFG.model} / ${CFG.character || 'raw'}`);
+  checkConnection();
+  if (CFG.hotword) {
+    addLog('sys', `HOTWORD MODE: say "${CFG.hotword}" to activate`);
+    startHotwordListen();
+  }
+}
+
+// --- BOOT ---
+checkConnection();
+addLog('sys', `TARGET: ${CFG.ip}:${CFG.port} / MODEL: ${CFG.model}`);
+if (CFG.hotword) {
+  addLog('sys', `HOTWORD: "${CFG.hotword}" — always listening`);
+  startHotwordListen();
+}
+</script>
+</body>
+</html>
