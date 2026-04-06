@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Miskulin Technologies — Proof Hub</title>
+<meta name="description" content="Evidence stack for CAIRN-K, Hotport, and the BOP Protocol. Presented as evidence, not theater.">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{--void:#060C16;--abyss:#0A1220;--deep:#132238;--panel:#16263D;--gold:#C5A558;--gold-l:#D9C17A;--gold-d:#8B7340;--gold-dim:#6B5A36;--cream:#E8E0D0;--bone:#CFC4B0;--steel:#5C6B7A;--slate:#3A4856;--green:#4B8E46}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;font-size:16px}
+body{background:var(--void);color:var(--cream);font-family:'EB Garamond',Georgia,serif;line-height:1.7;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+body::after{content:'';position:fixed;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(197,165,88,.008) 2px,rgba(197,165,88,.008) 4px),repeating-linear-gradient(90deg,transparent,transparent 2px,rgba(197,165,88,.006) 2px,rgba(197,165,88,.006) 4px);pointer-events:none;z-index:10000}
+::selection{background:rgba(197,165,88,.25);color:var(--cream)}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:1000;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:rgba(6,12,22,.92);backdrop-filter:blur(12px);border-bottom:1px solid rgba(197,165,88,.06)}
+.nav-brand{font-family:'Cinzel',serif;font-size:11px;letter-spacing:5px;text-transform:uppercase;color:var(--gold-d)}
+.nav-links{display:flex;gap:28px}
+.nav-links a{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--steel);text-decoration:none;transition:color .3s}
+.nav-links a:hover{color:var(--gold)}
+
+.hero{min-height:84vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 32px 72px;position:relative}
+.hero::before{content:'';position:absolute;width:760px;height:760px;top:40%;left:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(197,165,88,.04) 0%,transparent 65%);pointer-events:none}
+.kicker{font-family:'Cinzel',serif;font-size:11px;letter-spacing:6px;text-transform:uppercase;color:var(--gold-dim);margin-bottom:28px}
+.headline{font-family:'Cinzel',serif;font-size:clamp(42px,8vw,88px);line-height:1.06;letter-spacing:10px;color:var(--gold);text-shadow:0 0 60px rgba(197,165,88,.1),0 2px 40px rgba(0,0,0,.45);margin-bottom:18px}
+.subline{max-width:760px;font-size:clamp(19px,2.2vw,24px);color:var(--cream);margin-bottom:32px}
+.summary{max-width:780px;font-size:18px;color:var(--bone)}
+.hero-actions{margin-top:40px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.btn{display:inline-block;padding:16px 30px;border:1px solid var(--gold);color:var(--gold);text-decoration:none;font-family:'Cinzel',serif;font-size:12px;letter-spacing:4px;text-transform:uppercase;transition:all .25s}
+.btn:hover{background:var(--gold);color:var(--void)}
+.btn.secondary{border-color:rgba(197,165,88,.22);color:var(--cream)}
+
+.v-line{width:1px;height:90px;margin:0 auto;background:linear-gradient(180deg,transparent,var(--gold-dim),transparent)}
+
+.section{max-width:1120px;margin:0 auto;padding:88px 32px}
+.section-label{text-align:center;font-family:'Cinzel',serif;font-size:11px;letter-spacing:6px;text-transform:uppercase;color:var(--gold-dim);margin-bottom:22px}
+.section-heading{text-align:center;font-family:'Cinzel',serif;font-size:clamp(26px,3vw,38px);line-height:1.25;color:var(--gold-l);margin-bottom:22px}
+.section-copy{max-width:760px;margin:0 auto 42px;text-align:center;font-size:19px;color:var(--bone)}
+
+.proof-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:rgba(197,165,88,.06);border:1px solid rgba(197,165,88,.06)}
+.proof-card{background:var(--void);padding:34px 28px}
+.proof-card h3{font-family:'Cinzel',serif;font-size:14px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
+.proof-card p{font-size:15px;color:var(--steel);line-height:1.7}
+.proof-card .metric{font-family:'JetBrains Mono',monospace;color:var(--gold-l);font-size:28px;margin-bottom:8px}
+
+.links-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px}
+.link-panel{background:linear-gradient(135deg,var(--abyss),var(--deep));border:1px solid rgba(197,165,88,.08);padding:28px}
+.link-panel h3{font-family:'Cinzel',serif;font-size:14px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
+.link-panel p{color:var(--steel);font-size:15px;margin-bottom:14px;line-height:1.7}
+.link-panel ul{list-style:none}
+.link-panel li{padding:8px 0;border-top:1px solid rgba(197,165,88,.05);font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--bone)}
+
+.sequence{max-width:760px;margin:0 auto;background:linear-gradient(135deg,var(--deep),var(--panel));border:1px solid rgba(197,165,88,.08);padding:36px 34px}
+.sequence ol{padding-left:20px}
+.sequence li{color:var(--bone);font-size:18px;margin-bottom:12px;line-height:1.7}
+.sequence li span{color:var(--gold);font-weight:600}
+
+.warning{max-width:760px;margin:40px auto 0;border:1px solid rgba(197,165,88,.08);background:rgba(19,34,56,.35);padding:22px 24px;text-align:center;color:var(--steel);font-size:15px}
+.warning strong{color:var(--gold-l)}
+
+.cta{text-align:center;padding:88px 32px 76px}
+.cta h2{font-family:'Cinzel',serif;font-size:clamp(28px,4vw,42px);color:var(--gold);letter-spacing:4px;margin-bottom:14px}
+.cta p{color:var(--steel);font-size:18px;margin-bottom:28px}
+
+footer{padding:56px 32px;text-align:center;border-top:1px solid rgba(197,165,88,.04)}
+.footer-company{font-family:'Cinzel',serif;font-size:11px;letter-spacing:5px;text-transform:uppercase;color:var(--gold-dim);margin-bottom:8px}
+.footer-corp{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--slate);margin-bottom:20px}
+.footer-links{display:flex;justify-content:center;gap:28px;flex-wrap:wrap}
+.footer-links a{color:var(--slate);text-decoration:none;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;transition:color .3s}
+.footer-links a:hover{color:var(--gold)}
+
+@media(max-width:860px){nav{padding:0 24px}.nav-links{display:none}.proof-grid,.links-grid{grid-template-columns:1fr}.headline{letter-spacing:4px}.section,.cta{padding-left:24px;padding-right:24px}}
+</style>
+</head>
+<body>
+
+<nav>
+<div class="nav-brand">Miskulin Technologies</div>
+<div class="nav-links">
+<a href="#proof">Proof</a>
+<a href="#documents">Documents</a>
+<a href="#sequence">Sequence</a>
+<a href="#contact">Contact</a>
+<a href="index.html">Main Site</a>
+</div>
+</nav>
+
+<section class="hero">
+<div class="kicker">Public Proof Hub</div>
+<div class="headline">CAIRN-K</div>
+<div class="subline">Presented as evidence, not theater.</div>
+<div class="summary">Miskulin Technologies is building a sovereign AI governance architecture centered on compiled enforcement, local execution, and accountable system boundaries. This hub is the public-facing evidence stack: doctrine, timelines, proof maps, and outreach materials.</div>
+<div class="hero-actions">
+<a class="btn" href="#documents">View Documents</a>
+<a class="btn secondary" href="mailto:info@mtforge.ai?subject=Briefing%20Request">Request Briefing</a>
+</div>
+</section>
+
+<div class="v-line"></div>
+
+<section id="proof" class="section">
+<div class="section-label">Three Proof Points</div>
+<div class="section-heading">What this hub is designed to show</div>
+<div class="section-copy">Not a grand claim. A structured packet. The purpose of this hub is to make three things inspectable: the governance doctrine, the technical architecture, and the documented chronology.</div>
+<div class="proof-grid">
+<div class="proof-card"><div class="metric">1</div><h3>Doctrine</h3><p>The BOP Protocol defines compiled governance as a structural response to high-pressure system failure, drawn from industrial safety discipline rather than probabilistic policy language.</p></div>
+<div class="proof-card"><div class="metric">2</div><h3>Architecture</h3><p>CAIRN-K, Hotport, and the wider sovereign stack are presented as a coherent technical design: local, enforceable, and oriented toward execution-layer control rather than prompt-layer moderation.</p></div>
+<div class="proof-card"><div class="metric">3</div><h3>Chronology</h3><p>The supporting materials map when solution artifacts appeared relative to later synthesis documents, so the chronology can be inspected rather than asserted.</p></div>
+</div>
+</section>
+
+<div class="v-line"></div>
+
+<section id="documents" class="section">
+<div class="section-label">Evidence Stack</div>
+<div class="section-heading">Public Documents</div>
+<div class="links-grid">
+<div class="link-panel">
+<h3>Core Documents</h3>
+<p>Central public-facing documents explaining the doctrine, architecture, and timeline.</p>
+<ul>
+<li>BOP-MILITARY-READINESS-PROTOCOL.md</li>
+<li>PRESS-RELEASE-MTI-CHANGED-THE-GAME.md</li>
+<li>PUBLIC-PLAN.md</li>
+<li>AI-FOR-DUMMIES-MASTER.md</li>
+</ul>
+</div>
+<div class="link-panel">
+<h3>Organization Timelines</h3>
+<p>Comparative timelines mapping industry movement against the forge's chronology.</p>
+<ul>
+<li>ORG-TIMELINE-ANTHROPIC.md</li>
+<li>xAI Timeline (pending)</li>
+<li>Google Timeline (pending)</li>
+<li>OpenAI Timeline (pending)</li>
+</ul>
+</div>
+<div class="link-panel">
+<h3>Partnership Materials</h3>
+<p>Boardroom-safe outreach drafts for first-contact briefing requests.</p>
+<ul>
+<li>ANTHROPIC-EMAIL.md</li>
+<li>XAI-EMAIL.md</li>
+<li>GOOGLE-EMAIL.md</li>
+<li>OPENAI-EMAIL.md</li>
+</ul>
+</div>
+<div class="link-panel">
+<h3>Validation Boundary</h3>
+<p>Claims under independent verification are separated from lead materials rather than hidden inside them.</p>
+<ul>
+<li>Working Claims Annex (available on request)</li>
+<li>Prior Art Search Methodology</li>
+<li>Patent Filing Status</li>
+<li>Technical Benchmarks (pending third-party review)</li>
+</ul>
+</div>
+</div>
+</section>
+
+<div class="v-line"></div>
+
+<section id="sequence" class="section">
+<div class="section-label">Operating Sequence</div>
+<div class="section-heading">How this work is meant to be read</div>
+<div class="sequence">
+<ol>
+<li><span>Start with doctrine:</span> read the BOP Protocol to understand the governance philosophy.</li>
+<li><span>Then inspect chronology:</span> review the proof map to see when key artifacts appeared.</li>
+<li><span>Then inspect architecture:</span> review CAIRN-K, Hotport, and related materials as technical design.</li>
+<li><span>Then inspect outreach:</span> read the organization timelines and company-specific briefing drafts.</li>
+<li><span>Then inspect the annex:</span> separate hard claims from working claims still under independent validation.</li>
+</ol>
+</div>
+<div class="warning"><strong>Validation note:</strong> Some claims in the wider Miskulin Technologies packet remain under independent validation. Those claims are intentionally isolated in a separate annex rather than mixed into the lead documents.</div>
+</section>
+
+<div class="v-line"></div>
+
+<section id="contact" class="cta">
+<h2>Request a Briefing</h2>
+<p>Meeting / advisory role / pilot discussion</p>
+<a class="btn" href="mailto:info@mtforge.ai?subject=CAIRN-K%20Briefing%20Request">info@mtforge.ai</a>
+</section>
+
+<footer>
+<div class="footer-company">Miskulin Technologies Inc.</div>
+<div class="footer-corp">Alberta Corporation #2027957030 &middot; Nanaimo, BC, Canada</div>
+<div class="footer-links">
+<a href="index.html">Main Site</a>
+<a href="#proof">Proof</a>
+<a href="#documents">Documents</a>
+<a href="#sequence">Sequence</a>
+<a href="mailto:info@mtforge.ai">Contact</a>
+</div>
+</footer>
+
+</body>
+</html>

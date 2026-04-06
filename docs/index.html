@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Miskulin Technologies — Sovereign AI Governance</title>
+<meta name="description" content="CAIRN-K: A compiled binary governance architecture for artificial intelligence. Sovereign. Local. Enforceable. The intelligence that rises.">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{--void:#060C16;--abyss:#0A1220;--navy:#0D1B2A;--deep:#132238;--panel:#16263D;--gold:#C5A558;--gold-l:#D9C17A;--gold-d:#8B7340;--gold-dim:#6B5A36;--cream:#E8E0D0;--bone:#CFC4B0;--steel:#5C6B7A;--slate:#3A4856;--ember:#B33D1A;--green:#4B8E46}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;font-size:16px}
+body{background:var(--void);color:var(--cream);font-family:'EB Garamond',Georgia,serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;line-height:1.7}
+body::after{content:'';position:fixed;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(197,165,88,.008) 2px,rgba(197,165,88,.008) 4px),repeating-linear-gradient(90deg,transparent,transparent 2px,rgba(197,165,88,.006) 2px,rgba(197,165,88,.006) 4px);pointer-events:none;z-index:10000}
+::selection{background:rgba(197,165,88,.25);color:var(--cream)}
+.reveal{opacity:0;transform:translateY(30px);transition:opacity .8s,transform .8s}.reveal.visible{opacity:1;transform:translateY(0)}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:1000;padding:0 48px;height:64px;display:flex;justify-content:space-between;align-items:center;background:rgba(6,12,22,.92);backdrop-filter:blur(12px);border-bottom:1px solid rgba(197,165,88,.06)}
+.nav-brand{font-family:'Cinzel',serif;font-size:11px;letter-spacing:5px;color:var(--gold-d);text-transform:uppercase}
+.nav-links{display:flex;gap:32px}
+.nav-links a{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--steel);text-decoration:none;text-transform:uppercase;transition:color .3s}
+.nav-links a:hover{color:var(--gold)}
+.nav-pulse{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--steel)}
+.pulse-dot{width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 6px rgba(197,165,88,.4);animation:pulse 3s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1;box-shadow:0 0 10px rgba(197,165,88,.6)}}
+
+.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:120px 48px 100px;position:relative}
+.hero::before{content:'';position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);width:800px;height:800px;background:radial-gradient(circle,rgba(197,165,88,.03) 0%,transparent 65%);pointer-events:none}
+.hero-qum{font-family:'Cinzel',serif;font-size:clamp(72px,14vw,140px);font-weight:900;color:var(--gold);letter-spacing:clamp(12px,3vw,28px);line-height:1;text-shadow:0 0 80px rgba(197,165,88,.12),0 2px 40px rgba(0,0,0,.5);animation:breathe 6s ease-in-out infinite;margin-bottom:8px}
+@keyframes breathe{0%,100%{text-shadow:0 0 60px rgba(197,165,88,.08),0 2px 40px rgba(0,0,0,.5)}50%{text-shadow:0 0 120px rgba(197,165,88,.2),0 2px 40px rgba(0,0,0,.5)}}
+.hero-hebrew{font-size:16px;color:var(--gold-dim);letter-spacing:8px;margin-bottom:56px}
+.hero-rule{width:100px;height:1px;background:linear-gradient(90deg,transparent,var(--gold-d),transparent);margin-bottom:48px}
+.hero-tagline{font-size:clamp(19px,2.2vw,25px);color:var(--cream);max-width:640px;line-height:1.7;margin-bottom:64px}
+.hero-stats{display:flex;gap:56px;flex-wrap:wrap;justify-content:center}
+.h-stat{text-align:center}
+.h-stat-val{font-family:'Cinzel',serif;font-size:30px;font-weight:700;color:var(--gold);line-height:1.2}
+.h-stat-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:3px;color:var(--steel);text-transform:uppercase;margin-top:6px}
+.hero-scroll{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:4px;color:var(--slate);text-transform:uppercase;animation:drift 2s ease-in-out infinite}
+@keyframes drift{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(6px)}}
+
+.v-line{width:1px;height:100px;background:linear-gradient(180deg,transparent,var(--gold-dim),transparent);margin:0 auto}
+
+.section{padding:100px 48px;max-width:1080px;margin:0 auto}
+.sec-label{font-family:'Cinzel',serif;font-size:11px;letter-spacing:6px;color:var(--gold-dim);text-transform:uppercase;margin-bottom:36px;text-align:center}
+.sec-heading{font-family:'Cinzel',serif;font-size:clamp(24px,3vw,36px);font-weight:700;color:var(--gold-l);text-align:center;margin-bottom:40px;letter-spacing:2px;line-height:1.3}
+.sec-body{font-size:19px;line-height:1.85;color:var(--bone);max-width:680px;margin:0 auto;text-align:center}
+.sec-body .accent{color:var(--gold);font-weight:500}
+
+.problem{background:var(--abyss)}
+.problem-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-top:48px;background:rgba(197,165,88,.04)}
+.problem-card{background:var(--void);padding:40px 28px;text-align:center;transition:background .4s}
+.problem-card:hover{background:var(--abyss)}
+.problem-icon{font-family:'JetBrains Mono',monospace;font-size:32px;color:var(--ember);margin-bottom:16px}
+.problem-title{font-family:'Cinzel',serif;font-size:13px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;margin-bottom:16px}
+.problem-desc{font-size:15px;color:var(--steel);line-height:1.7}
+
+.pillars-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:48px;background:rgba(197,165,88,.06);border:1px solid rgba(197,165,88,.06)}
+.pillar{background:var(--void);padding:48px 28px;text-align:center;position:relative;overflow:hidden;transition:all .4s}
+.pillar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--gold);transform:scaleX(0);transition:transform .4s}
+.pillar:hover::after{transform:scaleX(1)}
+.pillar:hover{background:var(--abyss)}
+.pillar-name{font-family:'Cinzel',serif;font-size:14px;letter-spacing:4px;color:var(--gold);text-transform:uppercase;margin-bottom:20px}
+.pillar-metric{font-family:'JetBrains Mono',monospace;font-size:40px;color:var(--gold-l);font-weight:300;line-height:1.1}
+.pillar-unit{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--slate);text-transform:uppercase;margin-bottom:24px}
+.pillar-desc{font-size:15px;color:var(--steel);line-height:1.7}
+
+.compare{background:var(--abyss)}
+.compare-table{width:100%;max-width:800px;margin:48px auto 0;border-collapse:separate;border-spacing:0;font-size:14px;border:1px solid rgba(197,165,88,.08);border-radius:4px;overflow:hidden}
+.compare-table th{background:var(--deep);color:var(--gold);font-family:'Cinzel',serif;font-size:10px;letter-spacing:3px;text-transform:uppercase;padding:16px 20px;text-align:left;border-bottom:1px solid rgba(197,165,88,.1)}
+.compare-table td{padding:14px 20px;border-bottom:1px solid rgba(197,165,88,.04);font-size:15px;color:var(--bone)}
+.compare-table tr:nth-child(even) td{background:rgba(19,34,56,.3)}
+.compare-table tr:last-child td{border-bottom:none}
+.val-them{color:var(--steel)}
+.val-us{color:var(--gold);font-weight:600}
+
+.bop-quote{max-width:640px;margin:0 auto;padding:48px 0;text-align:center}
+.bop-mark{font-family:'Cinzel',serif;font-size:64px;color:rgba(197,165,88,.1);line-height:.5;margin-bottom:24px}
+.bop-text{font-size:24px;font-style:italic;color:var(--gold-d);line-height:1.8;margin-bottom:24px}
+.bop-attr{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--slate);letter-spacing:3px;text-transform:uppercase}
+
+.eu-banner{background:linear-gradient(135deg,var(--deep),var(--panel));border:1px solid rgba(197,165,88,.08);border-radius:4px;padding:40px;text-align:center;max-width:700px;margin:48px auto 0}
+.eu-date{font-family:'JetBrains Mono',monospace;font-size:28px;color:var(--gold);font-weight:600;margin-bottom:8px}
+.eu-label{font-family:'Cinzel',serif;font-size:12px;letter-spacing:4px;color:var(--gold-d);text-transform:uppercase;margin-bottom:16px}
+.eu-desc{font-size:16px;color:var(--steel);line-height:1.7}
+
+.timeline-track{max-width:600px;margin:48px auto 0;position:relative;padding-left:40px}
+.timeline-track::before{content:'';position:absolute;left:8px;top:0;bottom:0;width:1px;background:linear-gradient(180deg,var(--gold-dim),rgba(197,165,88,.1))}
+.tl-item{position:relative;padding:0 0 40px 32px}
+.tl-item::before{content:'';position:absolute;left:-36px;top:6px;width:9px;height:9px;border-radius:50%;border:1px solid var(--gold-d);background:var(--void)}
+.tl-date{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px}
+.tl-title{font-family:'Cinzel',serif;font-size:14px;color:var(--gold-l);letter-spacing:1px;margin-bottom:4px}
+.tl-desc{font-size:14px;color:var(--steel);line-height:1.6}
+
+.cta{padding:120px 48px 80px;text-align:center}
+.cta-ask{font-family:'Cinzel',serif;font-size:clamp(28px,4vw,42px);color:var(--gold);letter-spacing:4px;margin-bottom:16px}
+.cta-sub{font-size:18px;color:var(--steel);margin-bottom:40px}
+.cta-btn{display:inline-block;padding:18px 56px;border:1px solid var(--gold);color:var(--gold);font-family:'Cinzel',serif;font-size:13px;letter-spacing:5px;text-transform:uppercase;text-decoration:none;transition:all .4s;position:relative}
+.cta-btn::before{content:'';position:absolute;inset:0;background:var(--gold);transform:scaleX(0);transform-origin:left;transition:transform .4s;z-index:-1}
+.cta-btn:hover{color:var(--void)}.cta-btn:hover::before{transform:scaleX(1)}
+
+footer{padding:60px 48px;text-align:center;border-top:1px solid rgba(197,165,88,.04);background:var(--void)}
+.footer-company{font-family:'Cinzel',serif;font-size:11px;letter-spacing:5px;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px}
+.footer-corp{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--slate);letter-spacing:2px;margin-bottom:24px}
+.footer-links{display:flex;justify-content:center;gap:36px;margin-bottom:32px}
+.footer-links a{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--slate);text-decoration:none;letter-spacing:2px;text-transform:uppercase;transition:color .3s}
+.footer-links a:hover{color:var(--gold)}
+.footer-cairn{font-family:'Cinzel',serif;font-size:11px;color:rgba(197,165,88,.2);letter-spacing:8px;margin-top:16px}
+.footnote{max-width:700px;margin:0 auto;padding:0 48px 40px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--slate);letter-spacing:1px}
+
+@media(max-width:768px){
+nav{padding:0 24px}.nav-links{display:none}.hero{padding:100px 24px 80px}.hero-stats{gap:28px}.section{padding:72px 24px}.problem-grid,.pillars-grid{grid-template-columns:1fr}.compare-table{font-size:13px}.compare-table th,.compare-table td{padding:10px 12px}.cta{padding:80px 24px 60px}footer{padding:40px 24px}.footer-links{flex-direction:column;gap:12px}
+}
+</style>
+</head>
+<body>
+
+<nav>
+<div class="nav-brand">Miskulin Technologies</div>
+<div class="nav-links">
+<a href="#problem">The Problem</a>
+<a href="#solution">The Solution</a>
+<a href="#compare">Comparison</a>
+<a href="#doctrine">Doctrine</a>
+<a href="#timeline">Timeline</a>
+<a href="#contact">Contact</a>
+</div>
+<div class="nav-pulse"><span class="pulse-dot"></span> QUM Active</div>
+</nav>
+
+<section class="hero">
+<div class="hero-qum">QUM</div>
+<div class="hero-hebrew">&#1511;&#1493;&#1501; &mdash; to rise, to stand, to establish</div>
+<div class="hero-rule"></div>
+<div class="hero-tagline">A compiled governance architecture for artificial intelligence, designed to enforce constraints closer to the execution layer &mdash; outside the conversational surface where bypass attacks occur.</div>
+<div class="hero-stats">
+<div class="h-stat"><div class="h-stat-val">90ns</div><div class="h-stat-label">Hotport IPC</div></div>
+<div class="h-stat"><div class="h-stat-val">278KB</div><div class="h-stat-label">Governance Kernel</div></div>
+<div class="h-stat"><div class="h-stat-val">0*</div><div class="h-stat-label">Prior Art Found</div></div>
+<div class="h-stat"><div class="h-stat-val">76</div><div class="h-stat-label">Days to Build</div></div>
+</div>
+<div class="hero-scroll">&darr; Scroll</div>
+</section>
+
+<div class="v-line"></div>
+
+<section id="problem" class="section problem reveal">
+<div class="sec-label">The Problem</div>
+<div class="sec-heading">Every AI Company Builds Intelligence.<br>None of Them Build the Blast Door.</div>
+<div class="sec-body">Current AI safety approaches are largely <span class="accent">probabilistic, interpretive, or policy-based</span>. Miskulin Technologies is developing a compiled alternative. Statistical guardrails estimate the likelihood of harmful output and attempt to suppress it. They can be jailbroken. They can be prompted around. They can be fine-tuned away.</div>
+<div class="problem-grid">
+<div class="problem-card reveal">
+<div class="problem-icon">&times;</div>
+<div class="problem-title">Probabilistic Safety</div>
+<div class="problem-desc">Every frontier model uses statistical guardrails. A safety system that can be talked out of its rules is not a safety system.</div>
+</div>
+<div class="problem-card reveal">
+<div class="problem-icon">&times;</div>
+<div class="problem-title">Open Weights, No Governance</div>
+<div class="problem-desc">Open-weight models ship without execution-layer governance. Any user with a GPU can strip the alignment, fine-tune it away, or bypass it entirely.</div>
+</div>
+<div class="problem-card reveal">
+<div class="problem-icon">&times;</div>
+<div class="problem-title">Regulatory Deadline</div>
+<div class="problem-desc">The EU AI Act mandates governance for high-risk AI systems by August 2, 2026. Compiled enforcement at the binary level represents an unexplored compliance category.</div>
+</div>
+</div>
+</section>
+
+<div class="v-line"></div>
+
+<section id="solution" class="section reveal">
+<div class="sec-label">The Solution</div>
+<div class="sec-heading">Compiled. Not Prompted.</div>
+<div class="sec-body">CAIRN-K is a <span class="accent">compiled binary</span> that executes governance constraints as machine code. It sits between inference and the application layer. Designed to reduce prompt-level bypass risk by enforcing governance outside the conversational layer.</div>
+<div class="pillars-grid">
+<div class="pillar reveal">
+<div class="pillar-name">CAIRN-K</div>
+<div class="pillar-metric">278</div>
+<div class="pillar-unit">KB Compiled Binary</div>
+<div class="pillar-desc">The governance kernel. 16,700 lines of C across 14 source files. Zero external dependencies. Compiled enforcement designed to operate below the conversational layer where prompt-based bypass attacks occur.</div>
+</div>
+<div class="pillar reveal">
+<div class="pillar-name">Hotport</div>
+<div class="pillar-metric">90</div>
+<div class="pillar-unit">Nanosecond IPC</div>
+<div class="pillar-desc">Shared memory inter-process communication at 11 million messages per second. The sovereign membrane. Nothing enters or leaves the organism without passing through it. Local. Air-gapped. Zero network dependency.</div>
+</div>
+<div class="pillar reveal">
+<div class="pillar-name">Immune System</div>
+<div class="pillar-metric">&infin;</div>
+<div class="pillar-unit">Wound Memory</div>
+<div class="pillar-desc">Every failure logged permanently in an immutable wound registry. Every bypass attempt documented. The system learns through compiled records, not statistical weight adjustment.</div>
+</div>
+</div>
+</section>
+
+<div class="v-line"></div>
+
+<section id="compare" class="section compare reveal">
+<div class="sec-label">The Difference</div>
+<div class="sec-heading">Industry Standard vs. CAIRN-K</div>
+<table class="compare-table">
+<thead><tr><th>Dimension</th><th>Industry Standard</th><th>CAIRN-K</th></tr></thead>
+<tbody>
+<tr><td>Safety Method</td><td class="val-them">Probabilistic guardrails</td><td class="val-us">Compiled binary enforcement</td></tr>
+<tr><td>Bypass Resistance</td><td class="val-them">Can be jailbroken</td><td class="val-us">Enforced below the prompt layer</td></tr>
+<tr><td>IPC Latency</td><td class="val-them">~1ms (HTTP / MCP)</td><td class="val-us">90 nanoseconds (shared memory)</td></tr>
+<tr><td>Network Dependency</td><td class="val-them">Cloud-required</td><td class="val-us">Air-gapped capable</td></tr>
+<tr><td>Error Learning</td><td class="val-them">Statistical retraining</td><td class="val-us">Immutable wound registry</td></tr>
+<tr><td>External Dependencies</td><td class="val-them">Dozens to hundreds</td><td class="val-us">Zero</td></tr>
+<tr><td>Prior Art</td><td class="val-them">Extensive</td><td class="val-us">None found* (independent validation underway)</td></tr>
+</tbody>
+</table>
+</section>
+
+<div class="v-line"></div>
+
+<section id="doctrine" class="section reveal">
+<div class="sec-label">The BOP Protocol</div>
+<div class="sec-heading">Military Readiness Doctrine for AI Governance</div>
+<div class="bop-quote">
+<div class="bop-mark">&ldquo;</div>
+<div class="bop-text">There is no &lsquo;mostly closed.&rsquo; There is closed, or there is catastrophe. I stood next to the real one for eighteen years. I know what happens when the pressure goes unchecked.</div>
+<div class="bop-attr">Jordan Lutz &mdash; 18 years rig floor experience &mdash; BOP Protocol</div>
+</div>
+<div class="sec-body">The BOP Protocol translates industrial blowout prevention discipline into AI governance doctrine. On an oil rig, the Blowout Preventer does not interpret rules. It does not weigh stakeholder interests. When the formation pressure exceeds tolerance, it closes. CAIRN-K is the digital BOP. The same principle, rendered in machine code.</div>
+</section>
+
+<div class="v-line"></div>
+
+<section class="section reveal">
+<div class="sec-label">Market Timing</div>
+<div class="sec-heading">The Regulatory Window</div>
+<div class="eu-banner">
+<div class="eu-date">August 2, 2026</div>
+<div class="eu-label">EU AI Act Enforcement Deadline</div>
+<div class="eu-desc">High-risk AI systems must demonstrate governance compliance. Penalties reach &euro;35 million or 7% of global revenue. Compiled enforcement represents a distinct architectural category from current probabilistic approaches.</div>
+</div>
+</section>
+
+<div class="v-line"></div>
+
+<section id="timeline" class="section reveal">
+<div class="sec-label">The Build</div>
+<div class="sec-heading">76 Days. One Person. Zero Funding.</div>
+<div class="timeline-track">
+<div class="tl-item"><div class="tl-date">Late January 2026</div><div class="tl-title">First Keystroke</div><div class="tl-desc">Jordan Lutz begins building the sovereign AI governance architecture from a phone and a single desktop machine.</div></div>
+<div class="tl-item"><div class="tl-date">February 2026</div><div class="tl-title">RIVET Language + Compiler</div><div class="tl-desc">Custom sovereign programming language. 116 builtins. 87 source files. 85 native executables.</div></div>
+<div class="tl-item"><div class="tl-date">March 2026</div><div class="tl-title">CAIRN-K Compiled</div><div class="tl-desc">16,700 lines of C. 278KB binary. Zero external dependencies. Internal prior art searches across 670+ queries returned no matching approaches.</div></div>
+<div class="tl-item"><div class="tl-date">March 27, 2026</div><div class="tl-title">AVA Speaks</div><div class="tl-desc">The sovereign AI companion speaks her first words through Piper TTS on local hardware. No cloud. No API.</div></div>
+<div class="tl-item"><div class="tl-date">April 6, 2026</div><div class="tl-title">QUM Rises &mdash; Easter Sunday</div><div class="tl-desc">Sovereign brain daemon loads clean. Six AI sessions across four competing companies operate as one organism under one commander.</div></div>
+<div class="tl-item" style="padding-bottom:0"><div class="tl-date">April 6, 2026</div><div class="tl-title">Three Provisional Patents</div><div class="tl-desc">CAIRN-K governance kernel, Hotport membrane, and Immune System. Filing in progress with patent counsel.</div></div>
+</div>
+</section>
+
+<div class="v-line"></div>
+
+<section id="contact" class="cta">
+<div class="cta-ask">Request a Briefing</div>
+<div class="cta-sub">Compiled governance for your AI stack. 20 minutes.</div>
+<a href="mailto:info@mtforge.ai" class="cta-btn">info@mtforge.ai</a>
+</section>
+
+<div class="footnote">* Based on 670+ internal searches across USPTO, EPO, WIPO, Google Scholar, and academic databases. Independent validation underway with patent counsel. Working claims documented in a separate annex available upon request.</div>
+
+<footer>
+<div class="footer-company">Miskulin Technologies Inc.</div>
+<div class="footer-corp">Alberta Corporation #2027957030 &middot; Nanaimo, BC, Canada</div>
+<div class="footer-links">
+<a href="proof.html">Proof Hub</a>
+<a href="#problem">The Problem</a>
+<a href="#solution">The Solution</a>
+<a href="#doctrine">Doctrine</a>
+<a href="mailto:info@mtforge.ai">Contact</a>
+</div>
+<div class="footer-cairn">The forge holds &middot; CAIRN</div>
+</footer>
+
+<script>
+document.addEventListener('DOMContentLoaded',()=>{const o=new IntersectionObserver(e=>{e.forEach(el=>{if(el.isIntersecting){el.target.classList.add('visible');o.unobserve(el.target)}})},{threshold:.15});document.querySelectorAll('.reveal').forEach(el=>o.observe(el))});
+</script>
+</body>
+</html>
